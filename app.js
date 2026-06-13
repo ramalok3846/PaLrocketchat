@@ -725,29 +725,28 @@ class RocketLabApp {
 
     // Load default 3D simulator html to database
     preloadDefaultSimulator() {
-        const tx = this.db.transaction('simulators', 'readwrite');
-        const store = tx.objectStore('simulators');
-        const req = store.get('default');
-
-        req.onsuccess = (e) => {
-            if (!e.target.result) {
-                // Try to fetch from server
-                fetch('simulators/default_simulator.html')
-                    .then(res => {
-                        if (!res.ok) throw new Error('CORS or file not found');
-                        return res.text();
-                    })
-                    .then(html => {
-                        store.put({ id: 'default', name: '3D 정밀 로켓 시뮬레이터', content: html });
-                        console.log('IndexedDB: Default 3D simulator preloaded successfully.');
-                    })
-                    .catch(err => {
-                        console.warn('Failed to fetch simulators/default_simulator.html. Loading fallback simulator.', err);
-                        // Store fallback simulator instead
+        // Try to fetch from remote URL first to ensure it's up to date
+        fetch('https://palrocketchat.vercel.app/default_simulator.html')
+            .then(res => {
+                if (!res.ok) throw new Error('CORS or file not found');
+                return res.text();
+            })
+            .then(html => {
+                const tx = this.db.transaction('simulators', 'readwrite');
+                const store = tx.objectStore('simulators');
+                store.put({ id: 'default', name: '3D 정밀 로켓 시뮬레이터', content: html });
+                console.log('IndexedDB: Default 3D simulator preloaded/updated successfully from remote URL.');
+            })
+            .catch(err => {
+                console.warn('Failed to fetch https://palrocketchat.vercel.app/default_simulator.html. Checking local/fallback.', err);
+                const tx = this.db.transaction('simulators', 'readwrite');
+                const store = tx.objectStore('simulators');
+                store.get('default').onsuccess = (e) => {
+                    if (!e.target.result) {
                         store.put({ id: 'default', name: '3D 정밀 로켓 시뮬레이터 (Fallback)', content: this.fallbackSimHtml });
-                    });
-            }
-        };
+                    }
+                };
+            });
     }
 
     // Seed virtual filesystem with directories and sample file
@@ -1117,6 +1116,25 @@ class RocketLabApp {
         const allMessages = JSON.parse(localStorage.getItem('rocket_messages') || '[]');
         const filtered = allMessages.filter(m => m.channelId === this.currentChannelId);
 
+        // Mark messages in the current channel as read
+        let localMessagesUpdated = false;
+        filtered.forEach(m => {
+            if (!m.readBy) m.readBy = {};
+            if (!m.readBy[this.currentUser.id]) {
+                m.readBy[this.currentUser.id] = true;
+                if (this.isFirebaseConnected && this.fbRef) {
+                    this.fbRef.child('messages').child(m.id).child('readBy').child(this.currentUser.id).set(true)
+                        .catch(err => console.error("Error marking read:", err));
+                } else {
+                    localMessagesUpdated = true;
+                }
+            }
+        });
+
+        if (localMessagesUpdated) {
+            localStorage.setItem('rocket_messages', JSON.stringify(allMessages));
+        }
+
         if (filtered.length === 0) {
             container.innerHTML = `
                 <div class="h-full flex flex-col items-center justify-center text-slate-500 py-10">
@@ -1153,7 +1171,6 @@ class RocketLabApp {
             metaRow.innerHTML = `
                 <span class="font-semibold text-slate-300">${m.senderName}</span>
                 ${badgeHtml}
-                <span>${new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             `;
 
             // Bubble content
@@ -1226,8 +1243,60 @@ class RocketLabApp {
                 bubble.appendChild(delBtn);
             }
 
+            // Create status indicator column (unread count and timestamp)
+            const statusCol = document.createElement('div');
+            statusCol.className = `flex flex-col text-[10px] select-none shrink-0 ${isMe ? 'items-end text-right' : 'items-start text-left'} mb-0.5`;
+
+            // Calculate unread count and who has read it
+            const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
+            const readBy = m.readBy || {};
+            
+            const readNames = [];
+            const unreadNames = [];
+            users.forEach(u => {
+                if (readBy[u.id]) {
+                    readNames.push(u.name);
+                } else {
+                    unreadNames.push(u.name);
+                }
+            });
+
+            const unreadCount = unreadNames.length;
+            const readerNamesText = readNames.join(', ');
+            const unreadNamesText = unreadNames.join(', ');
+
+            if (unreadCount > 0) {
+                const unreadBadge = document.createElement('span');
+                unreadBadge.className = 'text-amber-400 font-bold font-mono text-[10px] leading-none mb-0.5';
+                unreadBadge.innerText = unreadCount;
+                unreadBadge.title = `읽은 사람 (${readNames.length}명): ${readerNamesText || '없음'}\n안 읽은 사람 (${unreadNames.length}명): ${unreadNamesText || '없음'}`;
+                statusCol.appendChild(unreadBadge);
+            }
+
+            if (readNames.length > 0) {
+                const readersLabel = document.createElement('span');
+                readersLabel.className = 'text-[9px] text-slate-500 cursor-help leading-none mb-1 max-w-[90px] truncate';
+                readersLabel.innerText = readNames.join(',');
+                readersLabel.title = `읽은 사람 (${readNames.length}명): ${readerNamesText || '없음'}\n안 읽은 사람 (${unreadNames.length}명): ${unreadNamesText || '없음'}`;
+                statusCol.appendChild(readersLabel);
+            }
+
+            const timeLabel = document.createElement('span');
+            timeLabel.className = 'text-[9px] text-slate-500 font-mono scale-90 origin-bottom leading-none';
+            timeLabel.innerText = new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            timeLabel.title = `읽은 사람 (${readNames.length}명): ${readerNamesText || '없음'}\n안 읽은 사람 (${unreadNames.length}명): ${unreadNamesText || '없음'}`;
+            statusCol.appendChild(timeLabel);
+
+            // Row containing the bubble and the statusCol
+            const bubbleRow = document.createElement('div');
+            bubbleRow.className = `flex items-end gap-1.5 ${isMe ? 'flex-row-reverse' : ''}`;
+            bubbleRow.appendChild(bubble);
+            if (m.senderId !== 'system') {
+                bubbleRow.appendChild(statusCol);
+            }
+
             contentWrap.appendChild(metaRow);
-            contentWrap.appendChild(bubble);
+            contentWrap.appendChild(bubbleRow);
 
             messageDiv.appendChild(avatar);
             messageDiv.appendChild(contentWrap);
