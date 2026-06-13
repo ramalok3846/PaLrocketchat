@@ -429,6 +429,10 @@ class RocketLabApp {
             const val = snapshot.val();
             const users = val ? Object.values(val) : [];
             localStorage.setItem('rocket_users', JSON.stringify(users));
+            
+            const mCountEl = document.getElementById('member-count-val');
+            if (mCountEl) mCountEl.innerText = users.length;
+            
             if (this.activeTab === 'admin') this.renderAdminUsersList();
             
             // Sync current user session in case role changed
@@ -471,6 +475,14 @@ class RocketLabApp {
             });
             
             localStorage.setItem('rocket_messages', JSON.stringify(messages));
+            
+            const msgBadge = document.getElementById('db-messages-badge');
+            const msgCount = document.getElementById('db-messages-count');
+            if (msgBadge && msgCount) {
+                msgCount.innerText = messages.length;
+                msgBadge.classList.remove('hidden');
+            }
+            
             if (this.activeTab === 'chat' && this.currentUser) {
                 this.renderChatMessages();
             }
@@ -1170,8 +1182,16 @@ class RocketLabApp {
         const container = document.getElementById('chat-messages-container');
         container.innerHTML = '';
 
-        const allMessages = JSON.parse(localStorage.getItem('rocket_messages') || '[]');
-        const filtered = allMessages.filter(m => m.channelId === this.currentChannelId);
+        let allMessages = [];
+        try {
+            allMessages = JSON.parse(localStorage.getItem('rocket_messages') || '[]');
+            if (!Array.isArray(allMessages)) allMessages = [];
+        } catch (err) {
+            console.error("Failed to parse rocket_messages from localStorage:", err);
+            allMessages = [];
+        }
+
+        const filtered = allMessages.filter(m => m && m.channelId === this.currentChannelId);
 
         // Mark messages in the current channel as read
         let localMessagesUpdated = false;
@@ -1179,7 +1199,7 @@ class RocketLabApp {
             if (!m.readBy || typeof m.readBy !== 'object') m.readBy = {};
             if (!m.readBy[this.currentUser.id]) {
                 m.readBy[this.currentUser.id] = true;
-                if (this.isFirebaseConnected && this.fbRef) {
+                if (m.id && typeof m.id === 'string' && this.isFirebaseConnected && this.fbRef) {
                     this.fbRef.child('messages').child(m.id).child('readBy').child(this.currentUser.id).set(true)
                         .catch(err => console.error("Error marking read:", err));
                 } else {

@@ -2,6 +2,27 @@
 <html lang="ko" class="h-full">
 <head>
     <meta charset="UTF-8">
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            const errorBanner = document.createElement('div');
+            errorBanner.style.position = 'fixed';
+            errorBanner.style.top = '0';
+            errorBanner.style.left = '0';
+            errorBanner.style.width = '100%';
+            errorBanner.style.backgroundColor = '#ef4444';
+            errorBanner.style.color = '#ffffff';
+            errorBanner.style.padding = '12px';
+            errorBanner.style.zIndex = '99999';
+            errorBanner.style.fontSize = '12px';
+            errorBanner.style.fontFamily = 'monospace';
+            errorBanner.style.fontWeight = 'bold';
+            errorBanner.style.textAlign = 'center';
+            errorBanner.style.boxShadow = '0 4px 10px rgba(0,0,0,0.3)';
+            errorBanner.innerHTML = `🚨 [JS Runtime Error] ${message} <br> <span style="font-size:10px; opacity:0.8;">Line: ${lineno}:${colno} in ${source}</span>`;
+            document.body.appendChild(errorBanner);
+            return false;
+        };
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🚀 RocketLab Link | 영재원 로켓 프로젝트 협업 앱</title>
     <!-- Tailwind CSS (for structure and base layout) -->
@@ -160,7 +181,8 @@
                             <span class="text-xs text-slate-500 hidden md:inline ml-2 border-l border-slate-800 pl-3" id="active-channel-desc">로켓 설계에 대한 자유로운 이야기를 나눕니다.</span>
                         </div>
                         <div class="flex items-center gap-3 text-xs text-slate-400">
-                            <span class="font-mono bg-slate-900 border border-slate-800 px-2 py-0.5 rounded"><i class="fa-regular fa-user mr-1.5"></i>멤버 6명</span>
+                            <span class="font-mono bg-slate-900 border border-slate-800 px-2 py-0.5 rounded text-amber-400 hidden" id="db-messages-badge"><i class="fa-solid fa-server mr-1.5"></i>DB 메시지: <span id="db-messages-count">0</span>개</span>
+                            <span class="font-mono bg-slate-900 border border-slate-800 px-2 py-0.5 rounded"><i class="fa-regular fa-user mr-1.5"></i>멤버 <span id="member-count-val">6</span>명</span>
                         </div>
                     </div>
 
