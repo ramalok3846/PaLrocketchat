@@ -427,14 +427,28 @@ class RocketLabApp {
             if (val) {
                 Object.keys(val).forEach(key => {
                     const m = val[key];
-                    m.id = key; // Use firebase push key as unique ID
-                    messages.push(m);
+                    if (m && typeof m === 'object') {
+                        m.id = key; // Use firebase push key as unique ID
+                        messages.push(m);
+                    }
                 });
             }
-            messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            messages.sort((a, b) => {
+                let tA = 0;
+                let tB = 0;
+                if (a && a.timestamp) {
+                    const d = new Date(a.timestamp).getTime();
+                    if (!isNaN(d)) tA = d;
+                }
+                if (b && b.timestamp) {
+                    const d = new Date(b.timestamp).getTime();
+                    if (!isNaN(d)) tB = d;
+                }
+                return tA - tB;
+            });
             
             localStorage.setItem('rocket_messages', JSON.stringify(messages));
-            if (this.activeTab === 'chat') {
+            if (this.activeTab === 'chat' && this.currentUser) {
                 this.renderChatMessages();
             }
         });
@@ -447,11 +461,17 @@ class RocketLabApp {
             if (val) {
                 Object.keys(val).forEach(key => {
                     const r = val[key];
-                    r.id = key;
-                    requests.push(r);
+                    if (r && typeof r === 'object') {
+                        r.id = key;
+                        requests.push(r);
+                    }
                 });
             }
-            requests.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            requests.sort((a, b) => {
+                const tA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+                const tB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+                return tB - tA; // descending order
+            });
 
             localStorage.setItem('rocket_pw_requests', JSON.stringify(requests));
             if (this.activeTab === 'admin') {
@@ -519,8 +539,10 @@ class RocketLabApp {
             if (val) {
                 Object.keys(val).forEach(key => {
                     const f = val[key];
-                    f.id = key;
-                    files.push(f);
+                    if (f && typeof f === 'object') {
+                        f.id = key;
+                        files.push(f);
+                    }
                 });
             }
             this.syncRealtimeFilesToIndexedDB(files);
@@ -1120,6 +1142,8 @@ class RocketLabApp {
     }
 
     renderChatMessages() {
+        if (!this.currentUser) return;
+
         const container = document.getElementById('chat-messages-container');
         container.innerHTML = '';
 
@@ -1129,7 +1153,7 @@ class RocketLabApp {
         // Mark messages in the current channel as read
         let localMessagesUpdated = false;
         filtered.forEach(m => {
-            if (!m.readBy) m.readBy = {};
+            if (!m.readBy || typeof m.readBy !== 'object') m.readBy = {};
             if (!m.readBy[this.currentUser.id]) {
                 m.readBy[this.currentUser.id] = true;
                 if (this.isFirebaseConnected && this.fbRef) {
@@ -1163,7 +1187,9 @@ class RocketLabApp {
             // Avatar
             const avatar = document.createElement('div');
             avatar.className = `w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${m.senderId === 'system' ? 'bg-slate-700 text-slate-300' : 'bg-blue-600/30 text-blue-300 border border-blue-500/30'}`;
-            avatar.innerText = m.senderName.substring(0, 1);
+            
+            const senderName = m.senderName || '알수없음';
+            avatar.innerText = (typeof senderName === 'string' && senderName.length > 0) ? senderName.substring(0, 1) : '?';
 
             // Message Bubble & Info wrapper
             const contentWrap = document.createElement('div');
@@ -1179,7 +1205,7 @@ class RocketLabApp {
             }
             
             metaRow.innerHTML = `
-                <span class="font-semibold text-slate-300">${m.senderName}</span>
+                <span class="font-semibold text-slate-300">${senderName}</span>
                 ${badgeHtml}
             `;
 
@@ -1193,7 +1219,7 @@ class RocketLabApp {
 
             // Render message text content
             const textNode = document.createElement('div');
-            textNode.innerText = m.content;
+            textNode.innerText = m.content || '';
             bubble.appendChild(textNode);
 
             // Render attachments if exists
@@ -1202,14 +1228,14 @@ class RocketLabApp {
                 attNode.className = 'mt-2.5 pt-2.5 border-t border-white/10 text-xs flex flex-col gap-2';
                 
                 const attInfo = m.attachment;
-                if (attInfo.type.startsWith('image/')) {
+                if (attInfo.type && attInfo.type.startsWith('image/')) {
                     // Render image
                     const img = document.createElement('img');
                     img.src = attInfo.data;
                     img.className = 'max-h-48 rounded border border-white/10 cursor-pointer object-contain hover:brightness-95 transition';
                     img.onclick = () => this.showPreviewModal(attInfo.name, attInfo.type, attInfo.data);
                     attNode.appendChild(img);
-                } else if (attInfo.name.endsWith('.html') || attInfo.type === 'text/html') {
+                } else if (attInfo.name && (attInfo.name.endsWith('.html') || attInfo.type === 'text/html')) {
                     // Special load button for custom HTML simulators shared in chat
                     const card = document.createElement('div');
                     card.className = 'bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between gap-4';
@@ -1224,19 +1250,23 @@ class RocketLabApp {
                         <button onclick="app.loadSharedSimulator('${attInfo.name}', '${attInfo.data}')" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] px-2 py-1 rounded transition shrink-0">시뮬레이터 실행</button>
                     `;
                     attNode.appendChild(card);
-                } else {
-                    // Regular file download block
-                    const fileCard = document.createElement('a');
-                    fileCard.href = attInfo.data;
-                    fileCard.download = attInfo.name;
-                    fileCard.className = 'flex items-center gap-2 bg-slate-950/40 p-2.5 rounded-lg border border-slate-850 hover:bg-slate-950/80 transition text-inherit decoration-none';
+                } else if (attInfo.name) {
+                    // Regular file card with both View (Preview) and Download capabilities
+                    const fileCard = document.createElement('div');
+                    fileCard.className = 'flex items-center justify-between gap-3 bg-slate-950/40 p-2.5 rounded-lg border border-slate-850 hover:bg-slate-950/80 transition cursor-pointer';
+                    fileCard.onclick = () => this.showPreviewModal(attInfo.name, attInfo.type, attInfo.data);
+                    
                     fileCard.innerHTML = `
-                        <i class="fa-regular fa-file-lines text-blue-400 text-base"></i>
-                        <div class="text-left leading-tight flex-1">
-                            <div class="font-semibold text-[11px] text-slate-200 truncate max-w-[140px]">${attInfo.name}</div>
-                            <div class="text-[9px] text-slate-500">${(attInfo.size / 1024).toFixed(1)} KB</div>
+                        <div class="flex items-center gap-2 flex-1 min-w-0">
+                            <i class="fa-regular fa-file-lines text-blue-400 text-base shrink-0"></i>
+                            <div class="text-left leading-tight truncate">
+                                <div class="font-semibold text-[11px] text-slate-200 truncate max-w-[140px]">${attInfo.name}</div>
+                                <div class="text-[9px] text-slate-500">${(attInfo.size / 1024).toFixed(1)} KB</div>
+                            </div>
                         </div>
-                        <i class="fa-solid fa-download text-[11px] text-slate-400"></i>
+                        <button onclick="event.stopPropagation(); app.downloadFile('${attInfo.name.replace(/'/g, "\\'")}', '${attInfo.type}', '${attInfo.data}')" class="w-6 h-6 rounded bg-slate-850/80 hover:bg-slate-750 flex items-center justify-center text-slate-400 hover:text-slate-200 transition shrink-0" title="다운로드">
+                            <i class="fa-solid fa-download text-[10px]"></i>
+                        </button>
                     `;
                     attNode.appendChild(fileCard);
                 }
@@ -1264,16 +1294,16 @@ class RocketLabApp {
             const readNames = [];
             const unreadNames = [];
             users.forEach(u => {
-                if (readBy[u.id]) {
-                    readNames.push(u.name);
-                } else {
-                    unreadNames.push(u.name);
+                if (u && u.id) {
+                    if (readBy[u.id]) {
+                        readNames.push(u.name);
+                    } else {
+                        unreadNames.push(u.name);
+                    }
                 }
             });
 
             const unreadCount = unreadNames.length;
-            const readerNamesText = readNames.join(', ');
-            const unreadNamesText = unreadNames.join(', ');
 
             if (unreadCount > 0) {
                 const unreadBadge = document.createElement('span');
@@ -1293,7 +1323,19 @@ class RocketLabApp {
 
             const timeLabel = document.createElement('span');
             timeLabel.className = 'text-[9px] text-slate-500 font-mono scale-90 origin-bottom leading-none cursor-pointer hover:text-slate-400 transition-colors';
-            timeLabel.innerText = new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            
+            let timeStr = '시간 미상';
+            try {
+                if (m.timestamp) {
+                    const d = new Date(m.timestamp);
+                    if (!isNaN(d.getTime())) {
+                        timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    }
+                }
+            } catch (err) {
+                console.error("Error parsing timestamp:", err);
+            }
+            timeLabel.innerText = timeStr;
             timeLabel.title = '클릭하여 읽은 사람 확인';
             timeLabel.onclick = () => this.showReadStatus(m.id);
             statusCol.appendChild(timeLabel);
@@ -1393,72 +1435,86 @@ class RocketLabApp {
         
         if (this.isSendingMessage) return;
         
-        const content = this.chatInput.value.trim();
-        const hasAttachment = this.activeChatAttachment !== null;
+        try {
+            const content = this.chatInput.value.trim();
+            const hasAttachment = this.activeChatAttachment !== null;
 
-        if (!content && !hasAttachment) return;
+            if (!content && !hasAttachment) return;
 
-        // Validation for notice channel: only Admin can post
-        const activeCh = this.channels.find(c => c.id === this.currentChannelId);
-        if (activeCh.readOnly && this.currentUser.role !== 'ADMIN') {
-            alert('❌ 공지사항 채널은 관리자만 메시지를 전송할 수 있습니다.');
-            return;
-        }
+            // Validation for notice channel: only Admin can post
+            const activeCh = this.channels.find(c => c.id === this.currentChannelId);
+            if (!activeCh) {
+                console.error("Active channel not found:", this.currentChannelId);
+                return;
+            }
+            if (activeCh.readOnly && (!this.currentUser || this.currentUser.role !== 'ADMIN')) {
+                alert('❌ 공지사항 채널은 관리자만 메시지를 전송할 수 있습니다.');
+                return;
+            }
 
-        this.isSendingMessage = true;
+            this.isSendingMessage = true;
 
-        // Find and disable submit button to prevent click spamming
-        const submitBtn = this.chatForm.querySelector('button[type="submit"]');
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
-        }
+            // Find and disable submit button to prevent click spamming
+            const submitBtn = this.chatForm.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
 
-        const newMsg = {
-            channelId: this.currentChannelId,
-            senderName: this.currentUser.name,
-            senderId: this.currentUser.id,
-            role: this.currentUser.role,
-            content: content,
-            timestamp: new Date().toISOString(),
-            attachment: this.activeChatAttachment,
-            readBy: { [this.currentUser.id]: true }
-        };
+            const newMsg = {
+                channelId: this.currentChannelId,
+                senderName: this.currentUser ? this.currentUser.name : 'Unknown',
+                senderId: this.currentUser ? this.currentUser.id : 'unknown',
+                role: this.currentUser ? this.currentUser.role : 'MEMBER',
+                content: content,
+                timestamp: new Date().toISOString(),
+                attachment: this.activeChatAttachment,
+                readBy: { [this.currentUser ? this.currentUser.id : 'unknown']: true }
+            };
 
-        // Clear input and attachment state immediately to give fast feedback and prevent double clicks
-        this.chatInput.value = '';
-        this.cancelChatAttachment();
+            // Clear input and attachment state immediately to give fast feedback and prevent double clicks
+            this.chatInput.value = '';
+            this.cancelChatAttachment();
 
-        const unlock = () => {
-            // Debounce unlocking for 500ms to guarantee no double-send on extremely fast responses
-            setTimeout(() => {
-                this.isSendingMessage = false;
-                if (submitBtn) {
-                    submitBtn.disabled = false;
-                    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                }
-            }, 500);
-        };
+            const unlock = () => {
+                // Debounce unlocking for 500ms to guarantee no double-send on extremely fast responses
+                setTimeout(() => {
+                    this.isSendingMessage = false;
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    }
+                }, 500);
+            };
 
-        if (this.isFirebaseConnected && this.fbRef) {
-            this.fbRef.child('messages').push(newMsg)
-                .then(() => unlock())
-                .catch(err => {
-                    console.error("Firebase RTDB send error:", err);
-                    const messages = JSON.parse(localStorage.getItem('rocket_messages') || '[]');
-                    newMsg.id = Date.now() + '';
-                    messages.push(newMsg);
-                    localStorage.setItem('rocket_messages', JSON.stringify(messages));
-                    this.renderChatMessages();
-                    unlock();
-                });
-        } else {
-            const messages = JSON.parse(localStorage.getItem('rocket_messages') || '[]');
-            newMsg.id = Date.now() + '';
-            messages.push(newMsg);
-            localStorage.setItem('rocket_messages', JSON.stringify(messages));
-            this.renderChatMessages();
-            unlock();
+            if (this.isFirebaseConnected && this.fbRef) {
+                this.fbRef.child('messages').push(newMsg)
+                    .then(() => unlock())
+                    .catch(err => {
+                        console.error("Firebase RTDB send error:", err);
+                        const messages = JSON.parse(localStorage.getItem('rocket_messages') || '[]');
+                        newMsg.id = Date.now() + '';
+                        messages.push(newMsg);
+                        localStorage.setItem('rocket_messages', JSON.stringify(messages));
+                        this.renderChatMessages();
+                        unlock();
+                    });
+            } else {
+                const messages = JSON.parse(localStorage.getItem('rocket_messages') || '[]');
+                newMsg.id = Date.now() + '';
+                messages.push(newMsg);
+                localStorage.setItem('rocket_messages', JSON.stringify(messages));
+                this.renderChatMessages();
+                unlock();
+            }
+        } catch (err) {
+            console.error("Exception in handleSendMessage:", err);
+            this.isSendingMessage = false;
+            const submitBtn = this.chatForm.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
         }
     }
 
@@ -1469,6 +1525,13 @@ class RocketLabApp {
     handleChatFileSelected(e) {
         const file = e.target.files[0];
         if (!file) return;
+
+        // Size limit check for Firebase RTDB stability (900KB)
+        if (file.size > 900 * 1024) {
+            alert(`❌ 첨부파일 크기가 너무 큽니다. (최대 900KB 제한)\n더 큰 파일은 '파일 보관함' 탭을 이용해 공유해 주세요.`);
+            e.target.value = '';
+            return;
+        }
 
         const reader = new FileReader();
         reader.onload = (evt) => {
@@ -2509,26 +2572,18 @@ class RocketLabApp {
                 for (let i = 0; i < binString.length; i++) {
                     bytes[i] = binString.charCodeAt(i);
                 }
-                return new TextDecoder('utf-8').decode(bytes);
+                // Use fatal: true to throw error if it contains invalid binary sequences (indicating a binary file)
+                return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
             } catch (err) {
-                console.error("Base64 decoding failed:", err);
-                return "[디코딩 실패: 바이너리 파일이거나 열 수 없는 인코딩 형식입니다]";
+                console.warn("Base64 text decoding failed, treating as binary file:", err);
+                return null;
             }
         };
 
         // Configure download button
         const dBtn = document.getElementById('preview-download-btn');
         dBtn.onclick = () => {
-            const blob = isDataURL 
-                ? this.dataURLtoBlob(content) 
-                : new Blob([content], { type: type });
-            
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.setAttribute('download', name);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            this.downloadFile(name, type, content);
         };
 
         // Determine text content for text-based previews
@@ -2544,6 +2599,53 @@ class RocketLabApp {
             img.src = content;
             img.className = 'max-w-full max-h-[70vh] rounded shadow-lg object-contain';
             container.appendChild(img);
+        } else if (type === 'application/pdf') {
+            icon.className = 'fa-regular fa-file-pdf text-rose-500';
+            const frame = document.createElement('iframe');
+            frame.className = 'w-full h-[70vh] bg-white rounded-lg border border-slate-700';
+            const blob = isDataURL ? this.dataURLtoBlob(content) : new Blob([content], { type: type });
+            frame.src = URL.createObjectURL(blob);
+            container.appendChild(frame);
+        } else if (textContent === null) {
+            // Unpreviewable binary file placeholder card
+            let binIcon = 'fa-solid fa-file-zipper text-blue-400';
+            const lowerName = name.toLowerCase();
+            if (lowerName.endsWith('.zip') || lowerName.endsWith('.rar') || lowerName.endsWith('.7z') || lowerName.endsWith('.tar') || lowerName.endsWith('.gz')) {
+                binIcon = 'fa-solid fa-file-zipper text-blue-400';
+            } else if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
+                binIcon = 'fa-solid fa-file-excel text-emerald-400';
+            } else if (lowerName.endsWith('.docx') || lowerName.endsWith('.doc')) {
+                binIcon = 'fa-solid fa-file-word text-blue-500';
+            } else if (lowerName.endsWith('.pptx') || lowerName.endsWith('.ppt')) {
+                binIcon = 'fa-solid fa-file-powerpoint text-orange-500';
+            } else {
+                binIcon = 'fa-solid fa-file text-slate-400';
+            }
+            
+            icon.className = binIcon;
+            
+            const card = document.createElement('div');
+            card.className = "flex flex-col items-center justify-center py-16 text-center text-slate-400 space-y-4 max-w-sm mx-auto";
+            
+            const sizeText = isDataURL 
+                ? (this.dataURLtoBlob(content).size / 1024).toFixed(1)
+                : '알 수 없음';
+                
+            card.innerHTML = `
+                <div class="w-16 h-16 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-3xl mb-2">
+                    <i class="${binIcon}"></i>
+                </div>
+                <div class="space-y-1">
+                    <div class="font-bold text-slate-200 text-sm truncate max-w-[280px]">${name}</div>
+                    <div class="text-[10px] text-slate-500">${sizeText} KB | ${type || '바이너리 파일'}</div>
+                </div>
+                <p class="text-xs text-slate-500 leading-relaxed px-4">이 파일 형식은 브라우저 직접 미리보기를 지원하지 않습니다. 아래 버튼을 눌러 로컬 기기로 다운로드하세요.</p>
+                <button onclick="app.downloadFile('${name.replace(/'/g, "\\'")}', '${type}', '${content}')" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl shadow-lg shadow-blue-500/20 transition-all flex items-center gap-2">
+                    <i class="fa-solid fa-download"></i>
+                    <span>파일 다운로드</span>
+                </button>
+            `;
+            container.appendChild(card);
         } else if (name.endsWith('.csv')) {
             icon.className = 'fa-solid fa-file-csv text-blue-400';
             // Parse CSV and render HTML table
@@ -2598,8 +2700,23 @@ class RocketLabApp {
         return new Blob([u8arr], {type:mime});
     }
 
+    downloadFile(name, type, content) {
+        const isDataURL = typeof content === 'string' && content.startsWith('data:');
+        const blob = isDataURL 
+            ? this.dataURLtoBlob(content) 
+            : new Blob([content], { type: type });
+        
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute('download', name);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
     // ADMIN CONTROL MODULES
     renderAdminUsersList() {
+        if (!this.currentUser) return;
         const tbody = document.getElementById('admin-users-table-body');
         tbody.innerHTML = '';
 
@@ -2687,6 +2804,7 @@ class RocketLabApp {
     }
 
     renderAdminRequestsList() {
+        if (!this.currentUser) return;
         const container = document.getElementById('admin-pw-requests-list');
         container.innerHTML = '';
 
