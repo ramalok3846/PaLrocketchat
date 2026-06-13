@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 RocketLab Link | 영재원 로켓 프로젝트 협업 앱</title>
+    <!-- Tailwind CSS (for structure and base layout) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js (for drawing tables & automatic charting) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Marked.js (for markdown parsing in reports) -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Firebase SDK (v8 Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <!-- FontAwesome (for icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts (Outfit & Noto Sans KR) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Outfit:wght@300;400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <!-- Custom stylesheet -->
+    <link rel="stylesheet" href="index.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        space: {
+                            50: '#f0f3ff',
+                            100: '#e1e8ff',
+                            200: '#c7d5ff',
+                            300: '#a1b8ff',
+                            400: '#7592ff',
+                            500: '#4c64ff',
+                            600: '#3842f5',
+                            700: '#2c31e0',
+                            800: '#2529b8',
+                            900: '#232892',
+                            950: '#0a0d1b',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Noto Sans KR', 'Outfit', 'sans-serif'],
+                        mono: ['Share Tech Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="h-full bg-space-950 text-slate-100 flex flex-col font-sans overflow-hidden">
+
+    <!-- MAIN APP STRUCTURE -->
+    <div id="main-app" class="flex-1 flex flex-col hidden overflow-hidden">
+        <!-- Top Navigation Header -->
+        <header class="h-16 bg-space-950/80 backdrop-blur-md border-b border-slate-800/60 px-6 flex items-center justify-between z-40">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                    <i class="fa-solid fa-rocket text-white text-lg animate-pulse"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-wide bg-gradient-to-r from-white via-blue-100 to-blue-400 bg-clip-text text-transparent">RocketLab Link</h1>
+                    <p class="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Center for Gifted Education</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <!-- Online Sync Status Indicator -->
+                <div id="sync-status-badge" class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/40 border border-slate-700/50 rounded-xl text-[11px] font-semibold text-slate-400">
+                    <span class="w-2.5 h-2.5 rounded-full bg-slate-550 animate-pulse" id="sync-status-dot"></span>
+                    <span id="sync-status-text">로컬 저장소 모드</span>
+                </div>
+
+                <!-- User Profile Display -->
+                <div class="flex items-center gap-3 bg-slate-800/30 border border-slate-800 rounded-full py-1.5 pl-3 pr-4">
+                    <div class="w-7 h-7 rounded-full bg-blue-600/30 border border-blue-500/50 flex items-center justify-center text-xs font-bold text-blue-300" id="user-avatar">
+                        홍
+                    </div>
+                    <div class="text-left leading-none">
+                        <div class="flex items-center gap-1.5">
+                            <span id="user-display-name" class="text-sm font-semibold">홍서준</span>
+                            <span id="user-role-badge" class="bg-blue-500/20 text-blue-300 text-[9px] px-1 rounded font-bold uppercase tracking-wider">Member</span>
+                        </div>
+                        <span id="user-display-id" class="text-[10px] text-slate-500 font-mono">@seojun</span>
+                    </div>
+                </div>
+
+                <!-- Dark/Light Theme Toggle -->
+                <button id="theme-toggle-btn" class="w-9 h-9 rounded-xl bg-slate-800/40 border border-slate-700/50 hover:bg-slate-800/80 flex items-center justify-center text-slate-400 hover:text-slate-200 transition">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+
+                <!-- Logout Button -->
+                <button onclick="app.logout()" class="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500/20 flex items-center justify-center text-rose-400 hover:text-rose-300 transition" title="로그아웃">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                </button>
+            </div>
+        </header>
+
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Sidebar -->
+            <aside class="w-64 bg-space-950/60 border-r border-slate-800/50 flex flex-col justify-between overflow-y-auto">
+                <div class="p-4 space-y-6">
+                    <!-- Main Navigation Menu -->
+                    <div>
+                        <div class="text-[10px] font-bold text-slate-500 tracking-wider uppercase px-3 mb-2 font-mono">Workspace</div>
+                        <nav class="space-y-1">
+                            <button onclick="app.switchTab('chat')" id="nav-chat" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-blue-400 bg-blue-500/10 border border-blue-500/20">
+                                <i class="fa-regular fa-comments text-base"></i>
+                                <span>로켓 채팅방</span>
+                            </button>
+                            <button onclick="app.switchTab('table')" id="nav-table" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/40">
+                                <i class="fa-solid fa-table text-base"></i>
+                                <span>표 그리기 도구</span>
+                            </button>
+                            <button onclick="app.switchTab('report')" id="nav-report" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/40">
+                                <i class="fa-regular fa-file-lines text-base"></i>
+                                <span>보고서 작성기</span>
+                            </button>
+                            <button onclick="app.switchTab('simulator')" id="nav-simulator" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/40">
+                                <i class="fa-solid fa-circle-play text-base"></i>
+                                <span>3D 시뮬레이터</span>
+                            </button>
+                            <button onclick="app.switchTab('storage')" id="nav-storage" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/40">
+                                <i class="fa-regular fa-folder-open text-base"></i>
+                                <span>파일 보관함</span>
+                            </button>
+                        </nav>
+                    </div>
+
+                    <!-- Chat Channels -->
+                    <div id="chat-channels-list-container">
+                        <div class="text-[10px] font-bold text-slate-500 tracking-wider uppercase px-3 mb-2 font-mono flex justify-between items-center">
+                            <span>Channels</span>
+                            <span class="text-[9px] bg-slate-800 px-1 rounded cursor-pointer" onclick="app.resetChannels()">기본화</span>
+                        </div>
+                        <div class="space-y-1 text-sm text-slate-400" id="channels-list">
+                            <!-- Populated in app.js -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Settings Area (Visible only to Admin) -->
+                <div class="p-4 border-t border-slate-900/60 hidden" id="sidebar-admin-section">
+                    <button onclick="app.switchTab('admin')" id="nav-admin" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-amber-400 hover:text-amber-200 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20">
+                        <i class="fa-solid fa-user-shield text-base animate-pulse"></i>
+                        <span>관리자 설정 콘솔</span>
+                    </button>
+                </div>
+            </aside>
+
+            <!-- MAIN WORKSPACE -->
+            <main class="flex-1 bg-slate-950/20 flex flex-col overflow-hidden relative">
+
+                <!-- 1. TAB: CHAT ROOM -->
+                <section id="tab-content-chat" class="tab-pane flex-1 flex flex-col overflow-hidden">
+                    <div class="h-14 bg-space-950/40 border-b border-slate-800/40 px-6 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="text-slate-400 font-bold">#</span>
+                            <h2 class="font-bold text-slate-200" id="active-channel-name">자유대화</h2>
+                            <span class="text-xs text-slate-500 hidden md:inline ml-2 border-l border-slate-800 pl-3" id="active-channel-desc">로켓 설계에 대한 자유로운 이야기를 나눕니다.</span>
+                        </div>
+                        <div class="flex items-center gap-3 text-xs text-slate-400">
+                            <span class="font-mono bg-slate-900 border border-slate-800 px-2 py-0.5 rounded"><i class="fa-regular fa-user mr-1.5"></i>멤버 6명</span>
+                        </div>
+                    </div>
+
+                    <!-- Chat message list -->
+                    <div class="flex-1 overflow-y-auto p-6 space-y-4" id="chat-messages-container">
+                        <!-- Populated by app.js -->
+                    </div>
+
+                    <!-- Chat attachment preview area -->
+                    <div id="chat-attachment-preview-container" class="hidden bg-slate-900/80 border-t border-slate-800 px-6 py-2.5 flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-blue-400 text-lg">
+                                <i class="fa-solid fa-file-arrow-up" id="attach-file-icon"></i>
+                            </div>
+                            <div class="text-left">
+                                <div class="text-xs font-semibold text-slate-200" id="attach-file-name">file_name.csv</div>
+                                <div class="text-[10px] text-slate-500" id="attach-file-size">14.2 KB</div>
+                            </div>
+                        </div>
+                        <button onclick="app.cancelChatAttachment()" class="text-slate-400 hover:text-slate-200 p-1.5"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+
+                    <!-- Chat input bar -->
+                    <div class="p-4 bg-space-950/50 border-t border-slate-800/40">
+                        <form id="chat-send-form" onsubmit="app.handleSendMessage(event)" class="flex items-center gap-3 bg-slate-900/80 border border-slate-800/80 rounded-2xl p-2 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/50 transition">
+                            <button type="button" onclick="app.triggerChatAttachment()" class="w-10 h-10 rounded-xl hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-200 transition" title="파일 첨부">
+                                <i class="fa-solid fa-paperclip text-lg"></i>
+                            </button>
+                            <input type="file" id="chat-file-input" class="hidden" onchange="app.handleChatFileSelected(event)">
+
+                            <input type="text" id="chat-message-input" autocomplete="off" placeholder="#자유대화에 메시지 보내기... (첨부파일은 IndexedDB에 저장됩니다)" class="flex-1 bg-transparent border-0 outline-none text-sm text-slate-100 placeholder-slate-500 px-2">
+
+                            <!-- Emojis & Send -->
+                            <div class="flex items-center gap-1.5">
+                                <button type="button" onclick="app.insertEmoji('🚀')" class="w-8 h-8 rounded-lg hover:bg-slate-800 flex items-center justify-center text-base" title="로켓">🚀</button>
+                                <button type="button" onclick="app.insertEmoji('🔥')" class="w-8 h-8 rounded-lg hover:bg-slate-800 flex items-center justify-center text-base" title="불">🔥</button>
+                                <button type="button" onclick="app.insertEmoji('📊')" class="w-8 h-8 rounded-lg hover:bg-slate-800 flex items-center justify-center text-base" title="차트">📊</button>
+                                <button type="submit" class="w-10 h-10 rounded-xl bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-white transition shadow-lg shadow-blue-500/10">
+                                    <i class="fa-solid fa-paper-plane text-sm"></i>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- 2. TAB: TABLE DRAWING TOOL -->
+                <section id="tab-content-table" class="tab-pane flex-1 flex flex-col overflow-hidden hidden">
+                    <div class="h-14 bg-space-950/40 border-b border-slate-800/40 px-6 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-table text-blue-400"></i>
+                            <h2 class="font-bold text-slate-200">데이터 표 그리기 도구</h2>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select id="table-template-select" onchange="app.loadTableTemplate(this.value)" class="bg-slate-800 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 outline-none focus:border-blue-500">
+                                <option value="blank">빈 표 생성</option>
+                                <option value="fuel">고체 연료 추력 데이터 템플릿</option>
+                                <option value="flight">로켓 고도 비행 테스트 로그</option>
+                                <option value="staging">다단 분리 고도 분석표</option>
+                            </select>
+                            <button onclick="app.exportTableCSV()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition"><i class="fa-solid fa-file-csv mr-1.5"></i>CSV 내보내기</button>
+                            <button onclick="app.copyTableMarkdown()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition"><i class="fa-brands fa-markdown mr-1.5"></i>Markdown 복사</button>
+                            <button onclick="app.copyTableHTML()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition"><i class="fa-solid fa-code mr-1.5"></i>HTML 복사</button>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col md:flex-row gap-6">
+                        <!-- Table workspace left -->
+                        <div class="flex-1 flex flex-col space-y-4">
+                            <div class="bg-slate-900/40 border border-slate-800/60 rounded-xl p-4 overflow-x-auto">
+                                <div class="flex justify-between items-center mb-3">
+                                    <div class="text-xs font-semibold text-slate-400">직접 셀을 더블 클릭하여 내용을 편집하세요.</div>
+                                    <div class="flex gap-1.5">
+                                        <button onclick="app.tableAddRow()" class="bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 text-[11px] px-2 py-1 rounded text-blue-300"><i class="fa-solid fa-plus mr-1"></i>행 추가</button>
+                                        <button onclick="app.tableDeleteRow()" class="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-[11px] px-2 py-1 rounded text-rose-400"><i class="fa-solid fa-minus mr-1"></i>행 삭제</button>
+                                        <button onclick="app.tableAddColumn()" class="bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/30 text-[11px] px-2 py-1 rounded text-blue-300"><i class="fa-solid fa-plus mr-1"></i>열 추가</button>
+                                        <button onclick="app.tableDeleteColumn()" class="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-[11px] px-2 py-1 rounded text-rose-400"><i class="fa-solid fa-minus mr-1"></i>열 삭제</button>
+                                    </div>
+                                </div>
+                                <table id="drawing-table" class="min-w-full border-collapse border border-slate-800 text-sm text-slate-200 text-center">
+                                    <!-- Populated in app.js -->
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Graph display right -->
+                        <div class="w-full md:w-96 flex flex-col space-y-4">
+                            <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-4 flex-1 flex flex-col">
+                                <div class="flex justify-between items-center mb-3">
+                                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">표 데이터 연동 시각화 차트</h3>
+                                    <select id="chart-type-select" onchange="app.updateChartType(this.value)" class="bg-slate-800 border border-slate-700 text-[10px] px-1.5 py-0.5 rounded text-slate-300">
+                                        <option value="line">라인 차트 (Line)</option>
+                                        <option value="bar">바 차트 (Bar)</option>
+                                        <option value="radar">레이더 (Radar)</option>
+                                    </select>
+                                </div>
+                                <div class="flex-1 flex items-center justify-center min-h-[220px] bg-slate-950/60 border border-slate-900 rounded-lg p-2">
+                                    <canvas id="table-visualization-chart"></canvas>
+                                </div>
+                                <div class="mt-3 text-[10px] text-slate-500 leading-normal">
+                                    * 첫 번째 열(X축)과 나머지 열(Y축 데이터 계열)의 수치 데이터를 추출하여 실시간 자동 렌더링합니다.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 3. TAB: REPORT BUILDER -->
+                <section id="tab-content-report" class="tab-pane flex-1 flex flex-col overflow-hidden hidden">
+                    <div class="h-14 bg-space-950/40 border-b border-slate-800/40 px-6 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-regular fa-file-lines text-blue-400"></i>
+                            <h2 class="font-bold text-slate-200">로켓 비행 분석 보고서 작성기</h2>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="app.importTableToReport()" class="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-xs px-2.5 py-1.5 rounded-lg text-blue-300 transition"><i class="fa-solid fa-table-list mr-1.5"></i>작성 중인 표 가져오기</button>
+                            <button onclick="app.importSimulatorStats()" class="bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-xs px-2.5 py-1.5 rounded-lg text-blue-300 transition"><i class="fa-solid fa-gauge mr-1.5"></i>시뮬레이션 정보 가져오기</button>
+                            <button onclick="app.printReport()" class="bg-blue-600 hover:bg-blue-500 text-xs px-3 py-1.5 rounded-lg text-white font-semibold transition"><i class="fa-solid fa-print mr-1.5"></i>PDF 저장 / 인쇄</button>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 flex overflow-hidden">
+                        <!-- Left pane: Markdown Editor -->
+                        <div class="w-1/2 flex flex-col border-r border-slate-800/60 h-full">
+                            <!-- Editing toolbar -->
+                            <div class="bg-slate-900/60 border-b border-slate-800 px-4 py-2 flex flex-wrap gap-1">
+                                <button onclick="app.reportInsertText('# ')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs font-bold font-mono" title="대제목 H1">H1</button>
+                                <button onclick="app.reportInsertText('## ')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs font-bold font-mono" title="중제목 H2">H2</button>
+                                <button onclick="app.reportInsertText('### ')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs font-bold font-mono" title="소제목 H3">H3</button>
+                                <div class="w-[1px] h-6 bg-slate-800 my-1 mx-1"></div>
+                                <button onclick="app.reportInsertText('**', '**')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs" title="굵게"><i class="fa-solid fa-bold"></i></button>
+                                <button onclick="app.reportInsertText('*', '*')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs" title="기울임"><i class="fa-solid fa-italic"></i></button>
+                                <button onclick="app.reportInsertText('> ')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs" title="인용구"><i class="fa-solid fa-quote-left"></i></button>
+                                <button onclick="app.reportInsertText('- ')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs" title="순서없는 리스트"><i class="fa-solid fa-list-ul"></i></button>
+                                <button onclick="app.reportInsertText('1. ')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs" title="순서있는 리스트"><i class="fa-solid fa-list-ol"></i></button>
+                                <div class="w-[1px] h-6 bg-slate-800 my-1 mx-1"></div>
+                                <button onclick="app.reportInsertText('`', '`')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs" title="코드 인라인"><i class="fa-solid fa-code"></i></button>
+                                <button onclick="app.reportInsertText('```\n', '\n```')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs" title="코드 블록"><i class="fa-solid fa-terminal"></i></button>
+                                <button onclick="app.reportInsertText('[링크텍스트](', ')')" class="w-8 h-8 rounded hover:bg-slate-800 text-xs" title="링크"><i class="fa-solid fa-link"></i></button>
+                            </div>
+                            <!-- Editor text-area -->
+                            <textarea id="report-editor-textarea" oninput="app.updateReportPreview()" placeholder="이곳에 보고서를 마크다운 형식으로 작성하세요. 오른쪽에 실시간 렌더링된 결과가 노출됩니다." class="flex-1 bg-transparent p-6 outline-none text-slate-300 font-mono text-sm leading-relaxed resize-none overflow-y-auto placeholder-slate-600 focus:bg-slate-950/20 transition"></textarea>
+                        </div>
+
+                        <!-- Right pane: Page Styled Preview -->
+                        <div class="w-1/2 bg-slate-900/20 p-6 overflow-y-auto flex justify-center">
+                            <div class="w-full max-w-[800px] min-h-[1050px] bg-white text-slate-800 shadow-2xl shadow-black/50 rounded p-12 relative border border-slate-200" id="report-print-page">
+                                <!-- Report dynamic content -->
+                                <article class="prose prose-slate max-w-none text-left" id="report-preview-content">
+                                    <!-- Compiled html -->
+                                </article>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4. TAB: 3D SIMULATOR -->
+                <section id="tab-content-simulator" class="tab-pane flex-1 flex flex-col overflow-hidden hidden">
+                    <div class="h-14 bg-space-950/40 border-b border-slate-800/40 px-6 flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <i class="fa-solid fa-circle-play text-blue-400"></i>
+                            <h2 class="font-bold text-slate-200">다단 로켓 3D 정밀 시뮬레이터 구동 패널</h2>
+                            <span class="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/30" id="sim-active-badge">Active: Default System</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="app.restoreDefaultSimulator()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition"><i class="fa-solid fa-rotate-left mr-1.5"></i>기본 시뮬레이터 복원</button>
+                            
+                            <!-- Simulator File Upload -->
+                            <label class="bg-blue-600 hover:bg-blue-500 text-xs px-3 py-1.5 rounded-lg text-white font-semibold transition cursor-pointer flex items-center gap-1.5">
+                                <i class="fa-solid fa-file-upload"></i>
+                                <span>새 시뮬레이터 HTML 업로드</span>
+                                <input type="file" id="simulator-html-input" accept=".html" onchange="app.handleSimulatorHtmlUpload(event)" class="hidden">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Simulator iframe space -->
+                    <div class="flex-1 bg-space-950 flex flex-col relative">
+                        <div id="sim-loader-overlay" class="absolute inset-0 bg-space-950 z-20 flex flex-col items-center justify-center hidden">
+                            <i class="fa-solid fa-circle-notch text-blue-400 text-3xl animate-spin mb-3"></i>
+                            <span class="text-xs text-blue-300 font-semibold" id="sim-loader-text">시뮬레이터를 가져오는 중...</span>
+                        </div>
+                        
+                        <iframe id="simulator-iframe" class="w-full h-full border-0 bg-transparent z-10" sandbox="allow-scripts allow-modals allow-downloads"></iframe>
+                    </div>
+                </section>
+
+                <!-- 5. TAB: FILE & FOLDER STORAGE -->
+                <section id="tab-content-storage" class="tab-pane flex-1 flex flex-col overflow-hidden hidden">
+                    <div class="h-14 bg-space-950/40 border-b border-slate-800/40 px-6 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-regular fa-folder-open text-blue-400"></i>
+                            <h2 class="font-bold text-slate-200">가상 파일 보관소</h2>
+                            <span class="text-[10px] text-slate-500 font-mono ml-2">IndexedDB Cloud Storage</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="app.openNewFolderModal()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition"><i class="fa-solid fa-folder-plus mr-1.5"></i>새 폴더</button>
+
+                            <!-- Folder Upload -->
+                            <label class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition cursor-pointer flex items-center gap-1.5">
+                                <i class="fa-solid fa-folder-arrow-up"></i>
+                                <span>폴더 업로드</span>
+                                <input type="file" id="storage-folder-input" webkitdirectory directory multiple onchange="app.handleStorageFolderUpload(event)" class="hidden">
+                            </label>
+
+                            <!-- File Upload -->
+                            <label class="bg-blue-600 hover:bg-blue-500 text-xs px-3 py-1.5 rounded-lg text-white font-semibold transition cursor-pointer flex items-center gap-1.5">
+                                <i class="fa-solid fa-file-arrow-up"></i>
+                                <span>파일 업로드</span>
+                                <input type="file" id="storage-file-input" multiple onchange="app.handleStorageFileUpload(event)" class="hidden">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Storage directory path bar -->
+                    <div class="bg-slate-900/30 border-b border-slate-800/50 px-6 py-2 text-xs flex items-center justify-between">
+                        <div class="flex items-center gap-1.5" id="storage-breadcrumbs">
+                            <span class="text-blue-400 font-semibold cursor-pointer" onclick="app.storageGoToFolder('/')">Root</span>
+                            <!-- Populated in app.js -->
+                        </div>
+                        <span class="text-[10px] text-slate-500" id="storage-usage-text">사용량 집계 중...</span>
+                    </div>
+
+                    <!-- File Explorer Grid -->
+                    <div class="flex-1 overflow-y-auto p-6" id="storage-explorer-container" ondragover="app.handleStorageDragOver(event)" ondrop="app.handleStorageDrop(event)">
+                        <!-- Grid elements filled by app.js -->
+                    </div>
+                </section>
+
+                <!-- 6. TAB: ADMIN CONTROL PANEL -->
+                <section id="tab-content-admin" class="tab-pane flex-1 flex flex-col overflow-hidden hidden">
+                    <div class="h-14 bg-amber-500/10 border-b border-amber-500/20 px-6 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-user-shield text-amber-400"></i>
+                            <h2 class="font-bold text-amber-400">관리자 설정 및 제어 콘솔</h2>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="app.exportDatabaseBackup()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition"><i class="fa-solid fa-download mr-1.5"></i>DB 백업 내보내기</button>
+                            <label class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs px-2.5 py-1.5 rounded-lg text-slate-200 transition cursor-pointer flex items-center gap-1.5">
+                                <i class="fa-solid fa-upload"></i>
+                                <span>DB 백업 가져오기</span>
+                                <input type="file" id="admin-db-import-input" accept=".json" onchange="app.importDatabaseBackup(event)" class="hidden">
+                            </label>
+                            <button onclick="app.resetWholeAppDatabase()" class="bg-rose-600 hover:bg-rose-500 text-xs px-3 py-1.5 rounded-lg text-white font-semibold transition"><i class="fa-solid fa-trash-can mr-1.5"></i>앱 전체 데이터 초기화</button>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto p-6 space-y-6">
+                        <!-- Firebase Configuration Panel -->
+                        <div class="bg-slate-900/40 border border-slate-800 rounded-xl p-5 space-y-4">
+                            <h3 class="font-bold text-slate-200 text-sm border-b border-slate-800 pb-2 flex justify-between items-center">
+                                <span class="flex items-center gap-2"><i class="fa-solid fa-cloud text-amber-500 animate-pulse"></i> <span>Firebase Firestore 실시간 동기화 설정</span></span>
+                                <span class="text-[10px] text-slate-500">Firebase 웹 앱 설정값을 기입해 주세요</span>
+                            </h3>
+                            <form id="admin-firebase-form" onsubmit="app.handleFirebaseConfigSubmit(event)" class="space-y-4">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div class="space-y-1">
+                                        <label class="text-[10px] font-semibold text-slate-400">API Key</label>
+                                        <input type="text" id="fb-api-key" placeholder="AIzaSy..." class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label class="text-[10px] font-semibold text-slate-400">Auth Domain</label>
+                                        <input type="text" id="fb-auth-domain" placeholder="project-id.firebaseapp.com" class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label class="text-[10px] font-semibold text-slate-400">Project ID</label>
+                                        <input type="text" id="fb-project-id" placeholder="project-id" class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label class="text-[10px] font-semibold text-slate-400">Storage Bucket</label>
+                                        <input type="text" id="fb-storage-bucket" placeholder="project-id.appspot.com" class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label class="text-[10px] font-semibold text-slate-400">Messaging Sender ID</label>
+                                        <input type="text" id="fb-messaging-sender-id" placeholder="1234567890" class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label class="text-[10px] font-semibold text-slate-400">App ID</label>
+                                        <input type="text" id="fb-app-id" placeholder="1:123456:web:abcd" class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                                    </div>
+                                </div>
+                                <div class="flex gap-2 justify-end pt-1">
+                                    <button type="button" onclick="app.loadDemoFirebaseConfig()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 px-3.5 py-2 rounded-xl transition font-medium">데모용 키 자동 완성</button>
+                                    <button type="button" onclick="app.disconnectFirebase()" class="bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-xs text-rose-400 px-3.5 py-2 rounded-xl transition font-medium">연동 해제 및 로컬모드 전환</button>
+                                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 py-2 rounded-xl transition font-bold"><i class="fa-solid fa-cloud-arrow-up mr-1"></i> 연동 정보 저장 및 실시간 동기화 시작</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- User Accounts Management -->
+                            <div class="bg-slate-900/40 border border-slate-800 rounded-xl p-5 space-y-4">
+                                <h3 class="font-bold text-slate-200 text-sm border-b border-slate-800 pb-2 flex justify-between items-center">
+                                    <span>사용자 가입 계정 목록</span>
+                                    <span class="text-xs text-slate-400" id="admin-user-count">총 0명</span>
+                                </h3>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-xs text-left text-slate-300 border-collapse">
+                                        <thead>
+                                            <tr class="border-b border-slate-800 text-slate-400">
+                                                <th class="py-2">이름</th>
+                                                <th class="py-2">아이디</th>
+                                                <th class="py-2">비밀번호</th>
+                                                <th class="py-2">역할</th>
+                                                <th class="py-2 text-right">관리</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="admin-users-table-body">
+                                            <!-- Filled dynamically -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Forgot ID/PW Requests Panel -->
+                            <div class="bg-slate-900/40 border border-slate-800 rounded-xl p-5 space-y-4">
+                                <h3 class="font-bold text-slate-200 text-sm border-b border-slate-800 pb-2">가입 계정/비밀번호 찾기 문의 접수 내역</h3>
+                                <div class="space-y-3" id="admin-pw-requests-list">
+                                    <!-- Filled dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- AUTHENTICATION VIEW OVERLAY (Login & Signup) -->
+    <div id="auth-overlay" class="fixed inset-0 z-50 bg-space-950 flex items-center justify-center p-4">
+        <!-- Space background animated elements -->
+        <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-space-950 to-space-950 z-0"></div>
+        <div class="absolute w-[500px] h-[500px] rounded-full bg-blue-600/5 blur-[120px] top-1/4 left-1/4 animate-pulse"></div>
+
+        <div class="w-full max-w-[440px] bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 shadow-2xl shadow-blue-500/5 rounded-2xl p-8 z-10 relative">
+            <div class="text-center mb-6">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 mx-auto mb-3">
+                    <i class="fa-solid fa-rocket text-white text-2xl"></i>
+                </div>
+                <h2 class="text-xl font-bold tracking-wide text-slate-100">RocketLab Link 로그인</h2>
+                <p class="text-xs text-slate-500 mt-1">영재원 고체 연료 다단 로켓 프로젝트 전용 채널</p>
+            </div>
+
+            <!-- LOGIN VIEW -->
+            <div id="auth-view-login" class="space-y-4">
+                <form id="auth-login-form" onsubmit="app.handleLoginSubmit(event)" class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-slate-400">아이디</label>
+                        <div class="relative">
+                            <i class="fa-regular fa-user absolute left-3.5 top-3.5 text-slate-500"></i>
+                            <input type="text" id="login-id" placeholder="ID를 입력하세요" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center">
+                            <label class="text-xs font-semibold text-slate-400">비밀번호</label>
+                            <button type="button" onclick="app.showForgotModal()" class="text-xs text-blue-400 hover:text-blue-300">아이디/비번 찾기</button>
+                        </div>
+                        <div class="relative">
+                            <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-500"></i>
+                            <input type="password" id="login-pw" placeholder="비밀번호를 입력하세요" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-3 text-sm font-semibold transition shadow-lg shadow-blue-500/15 mt-2">로그인</button>
+                </form>
+
+                <div class="text-center pt-2">
+                    <span class="text-xs text-slate-500">아직 계정이 없으신가요?</span>
+                    <button onclick="app.toggleAuthView('signup')" class="text-xs font-semibold text-blue-400 hover:text-blue-300 ml-1.5">회원가입</button>
+                </div>
+            </div>
+
+            <!-- SIGNUP VIEW -->
+            <div id="auth-view-signup" class="space-y-4 hidden">
+                <form id="auth-signup-form" onsubmit="app.handleSignupSubmit(event)" class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-slate-400 flex justify-between">
+                            <span>실명 인증</span>
+                            <span class="text-[10px] text-amber-500 font-normal">프로젝트 참여 대상자 실명 입력</span>
+                        </label>
+                        <div class="relative">
+                            <i class="fa-regular fa-id-card absolute left-3.5 top-3.5 text-slate-500"></i>
+                            <input type="text" id="signup-name" placeholder="참여 팀원 실명 입력 (예: 윤은준)" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-slate-400">사용할 아이디</label>
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <i class="fa-regular fa-user absolute left-3.5 top-3.5 text-slate-500"></i>
+                                <input type="text" id="signup-id" placeholder="아이디" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                            </div>
+                            <button type="button" onclick="app.checkSignupIdDuplicate()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 px-3 rounded-xl transition font-medium">중복 확인</button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-slate-400">비밀번호</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-500"></i>
+                            <input type="password" id="signup-pw" placeholder="비밀번호 설정" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-slate-400">비밀번호 한번더 확인</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-lock-open absolute left-3.5 top-3.5 text-slate-500"></i>
+                            <input type="password" id="signup-pw-confirm" placeholder="동일 비밀번호 재입력" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-3 text-sm font-semibold transition shadow-lg shadow-blue-500/15 mt-2">회원가입 완료</button>
+                </form>
+
+                <div class="text-center pt-2">
+                    <span class="text-xs text-slate-500">이미 계정이 있으신가요?</span>
+                    <button onclick="app.toggleAuthView('login')" class="text-xs font-semibold text-blue-400 hover:text-blue-300 ml-1.5">로그인하기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: FORGOT ID/PW INQUIRY -->
+    <div id="forgot-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="w-full max-w-[400px] bg-slate-900 border border-slate-800 rounded-2xl p-6 relative">
+            <h3 class="text-base font-bold text-slate-100 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-circle-question text-blue-400"></i>
+                <span>계정 찾기 문의</span>
+            </h3>
+            <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+                아이디/비밀번호 찾기는 관리자(<strong class="text-slate-200">허단/최준성</strong>, <span class="text-blue-400">ramlok@naver.com</span>)에게 문의해 주세요. 아래 폼을 작성해 바로 요청을 보낼 수 있습니다.
+            </p>
+
+            <form id="forgot-request-form" onsubmit="app.handleForgotSubmit(event)" class="space-y-3">
+                <div class="space-y-1">
+                    <label class="text-[11px] font-semibold text-slate-400">사용자 이름 (실명)</label>
+                    <input type="text" id="forgot-name" placeholder="참여 팀원 실명 (예: 윤은준)" required class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[11px] font-semibold text-slate-400">회신받을 이메일 주소</label>
+                    <input type="email" id="forgot-reply-email" placeholder="이메일 입력" required class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[11px] font-semibold text-slate-400">요청 내용</label>
+                    <textarea id="forgot-message" rows="3" placeholder="예: 가입한 ID를 잊어버렸습니다." required class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200 resize-none"></textarea>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="app.closeForgotModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition">취소</button>
+                    <!-- Simulated submit -->
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 rounded-xl font-medium transition flex items-center gap-1"><i class="fa-solid fa-paper-plane"></i> 대시보드로 발송</button>
+                    <!-- mailto trigger -->
+                    <button type="button" onclick="app.sendForgotMailto()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 rounded-xl transition flex items-center justify-center" title="직접 아웃룩/메일앱으로 전송"><i class="fa-solid fa-envelope"></i></button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: FILE PREVIEW -->
+    <div id="preview-modal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="w-full max-w-[800px] h-[90vh] bg-slate-900 border border-slate-800 rounded-2xl flex flex-col overflow-hidden shadow-2xl">
+            <div class="h-12 bg-slate-950 border-b border-slate-800 px-4 flex items-center justify-between">
+                <div class="flex items-center gap-2 text-slate-300">
+                    <i class="fa-regular fa-file" id="preview-file-icon"></i>
+                    <span class="text-xs font-semibold" id="preview-file-name">file_name.txt</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="preview-download-btn" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] px-2.5 py-1.25 rounded text-slate-300 flex items-center gap-1"><i class="fa-solid fa-download"></i> 다운로드</button>
+                    <button onclick="app.closePreviewModal()" class="text-slate-400 hover:text-slate-200 p-1.5"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-auto bg-slate-950/30 p-6 flex items-center justify-center" id="preview-content-area">
+                <!-- Filled by preview loader -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: NEW VIRTUAL FOLDER -->
+    <div id="new-folder-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="w-full max-w-[320px] bg-slate-900 border border-slate-800 rounded-2xl p-6 relative">
+            <h3 class="text-sm font-bold text-slate-100 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-folder-plus text-blue-400"></i>
+                <span>새 가상 폴더 생성</span>
+            </h3>
+            <div class="space-y-3">
+                <div class="space-y-1">
+                    <label class="text-[11px] font-semibold text-slate-400">폴더 이름</label>
+                    <input type="text" id="new-folder-name" placeholder="폴더명 입력" required class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                </div>
+                <div class="flex gap-2 pt-1">
+                    <button onclick="app.closeNewFolderModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-lg transition">취소</button>
+                    <button onclick="app.handleCreateFolderSubmit()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded-lg transition">생성</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- App JavaScript Logic -->
+    <script src="app.js"></script>
+</body>
+</html>

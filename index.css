@@ -1,0 +1,318 @@
+/* Base CSS for RocketLab Link App */
+
+:root {
+    --bg-primary: #0a0d1b;
+    --bg-secondary: rgba(15, 23, 42, 0.7);
+    --border-color: rgba(255, 255, 255, 0.08);
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --accent-blue: #0066cc;
+    --accent-blue-glow: rgba(0, 102, 204, 0.35);
+}
+
+/* Light Theme Variables */
+body.light-theme {
+    --bg-primary: #f3f6fa;
+    --bg-secondary: rgba(255, 255, 255, 0.85);
+    --border-color: rgba(0, 0, 0, 0.08);
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --accent-blue: #0066cc;
+    --accent-blue-glow: rgba(0, 102, 204, 0.15);
+}
+
+body.light-theme .bg-space-950 {
+    background-color: var(--bg-primary);
+}
+body.light-theme .bg-slate-900\/80,
+body.light-theme .bg-slate-900\/40,
+body.light-theme .bg-slate-900\/30 {
+    background-color: var(--bg-secondary);
+}
+body.light-theme .border-slate-800,
+body.light-theme .border-slate-800\/80,
+body.light-theme .border-slate-800\/60,
+body.light-theme .border-slate-800\/40,
+body.light-theme .border-slate-900\/60 {
+    border-color: var(--border-color);
+}
+body.light-theme .text-slate-100 {
+    color: var(--text-primary);
+}
+body.light-theme .text-slate-400,
+body.light-theme .text-slate-500 {
+    color: var(--text-secondary);
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Glassmorphism Classes */
+.glass-panel {
+    background: var(--bg-secondary);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+}
+body.light-theme ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+body.light-theme ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* Glowing Animations */
+@keyframes blueGlowPulse {
+    0%, 100% {
+        box-shadow: 0 0 15px var(--accent-blue-glow);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(0, 102, 204, 0.5);
+    }
+}
+
+.glow-btn {
+    animation: blueGlowPulse 3s infinite ease-in-out;
+}
+
+/* Interactive Table Styling */
+#drawing-table input {
+    background: transparent;
+    border: 0;
+    width: 100%;
+    text-align: center;
+    padding: 6px 12px;
+    color: inherit;
+    font-size: 13px;
+    outline: none;
+    transition: all 0.15s ease;
+}
+
+#drawing-table input:focus {
+    background: rgba(0, 102, 204, 0.1);
+    box-shadow: inset 0 0 0 1px rgba(0, 102, 204, 0.3);
+}
+
+#drawing-table th {
+    background-color: rgba(0, 102, 204, 0.15);
+    font-weight: 600;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+#drawing-table td {
+    border: 1px solid var(--border-color);
+    padding: 0;
+    background-color: rgba(15, 23, 42, 0.2);
+}
+
+body.light-theme #drawing-table td {
+    background-color: rgba(255, 255, 255, 0.6);
+}
+
+/* File explorer grid item hover effect */
+.file-grid-item {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.file-grid-item:hover {
+    transform: translateY(-2px);
+    background-color: rgba(0, 102, 204, 0.08);
+    border-color: rgba(0, 102, 204, 0.3);
+}
+
+/* Markdown preview A4-like container spacing */
+#report-preview-content h1 {
+    font-size: 2.25rem;
+    font-weight: 700;
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid var(--accent-blue);
+    padding-bottom: 0.5rem;
+    color: #0f172a;
+}
+
+#report-preview-content h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    color: #1e293b;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 0.25rem;
+}
+
+#report-preview-content h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+    color: #334155;
+}
+
+#report-preview-content p {
+    margin-bottom: 1rem;
+    line-height: 1.7;
+    color: #334155;
+}
+
+#report-preview-content blockquote {
+    border-left: 4px solid var(--accent-blue);
+    background-color: #f8fafc;
+    padding: 0.75rem 1.25rem;
+    margin: 1rem 0;
+    color: #475569;
+    font-style: italic;
+    border-radius: 0 8px 8px 0;
+}
+
+#report-preview-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5rem 0;
+}
+
+#report-preview-content th, 
+#report-preview-content td {
+    border: 1px solid #cbd5e1;
+    padding: 8px 12px;
+    text-align: center;
+}
+
+#report-preview-content th {
+    background-color: #f1f5f9;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+#report-preview-content tr:nth-child(even) {
+    background-color: #f8fafc;
+}
+
+#report-preview-content ul, 
+#report-preview-content ol {
+    margin-left: 1.5rem;
+    margin-bottom: 1rem;
+    list-style-position: outside;
+}
+
+#report-preview-content ul {
+    list-style-type: disc;
+}
+
+#report-preview-content ol {
+    list-style-type: decimal;
+}
+
+#report-preview-content code {
+    background-color: #f1f5f9;
+    color: #b91c1c;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+#report-preview-content pre {
+    background-color: #0f172a;
+    color: #f8fafc;
+    padding: 1rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 1.5rem 0;
+}
+
+#report-preview-content pre code {
+    background-color: transparent;
+    color: inherit;
+    padding: 0;
+    font-size: 1em;
+}
+
+/* PRINT MEDIA STYLING */
+@media print {
+    body {
+        background: white !important;
+        color: black !important;
+        overflow: visible !important;
+    }
+    
+    /* Hide all workspace layout elements */
+    #main-app, 
+    #test-user-switcher-bar, 
+    #auth-overlay, 
+    header, 
+    aside,
+    .h-14, 
+    .w-1\/2,
+    #chat-channels-list-container,
+    #sidebar-admin-section {
+        display: none !important;
+    }
+    
+    /* Make report layout the only visible block */
+    #tab-content-report {
+        display: block !important;
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100% !important;
+        height: auto !important;
+        overflow: visible !important;
+    }
+    
+    /* Hide editor and sidebar inside tab-content-report */
+    #tab-content-report > div:first-child {
+        display: none !important;
+    }
+    
+    #tab-content-report > div.flex-1 {
+        display: block !important;
+        overflow: visible !important;
+        padding: 0 !important;
+    }
+    
+    #tab-content-report > div.flex-1 > div.w-1\/2 {
+        display: none !important;
+    }
+    
+    #tab-content-report > div.flex-1 > div.overflow-y-auto {
+        display: block !important;
+        width: 100% !important;
+        max-width: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+    }
+    
+    #report-print-page {
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        height: auto !important;
+        min-height: 0 !important;
+        display: block !important;
+    }
+}
