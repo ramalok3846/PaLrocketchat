@@ -386,18 +386,41 @@ class RocketLabApp {
         }
     }
 
+    updateSyncErrorUI(err) {
+        console.error("Firebase Sync Error:", err);
+        const statusBadge = document.getElementById('sync-status-badge');
+        const statusDot = document.getElementById('sync-status-dot');
+        const statusText = document.getElementById('sync-status-text');
+        if (statusBadge && statusDot && statusText) {
+            statusBadge.className = "flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/15 border border-rose-500/25 text-rose-400 rounded-xl text-[11px] font-semibold";
+            statusDot.className = "w-2.5 h-2.5 rounded-full bg-rose-400 animate-pulse";
+            statusText.innerText = "클라우드 동기화 에러 (연결 상태 확인)";
+        }
+    }
+
     setupRealtimeListeners() {
         // Clean existing listeners
         if (this.fbListeners) {
             this.fbListeners.forEach(listener => {
-                listener.ref.off(listener.event, listener.callback);
+                if (listener.ref && typeof listener.ref.off === 'function') {
+                    listener.ref.off(listener.event, listener.callback);
+                }
             });
         }
         this.fbListeners = [];
 
         const registerListener = (ref, event, callback) => {
-            ref.on(event, callback);
-            this.fbListeners.push({ ref, event, callback });
+            const errCallback = err => {
+                this.updateSyncErrorUI(err);
+            };
+            ref.on(event, snapshot => {
+                try {
+                    callback(snapshot);
+                } catch (err) {
+                    console.error("Callback crash on ref:", ref ? ref.toString() : 'unknown', err);
+                }
+            }, errCallback);
+            this.fbListeners.push({ ref, event, callback, errCallback });
         };
 
         // 1. Users Sync
@@ -410,7 +433,7 @@ class RocketLabApp {
             
             // Sync current user session in case role changed
             if (this.currentUser) {
-                const updatedMe = users.find(u => u.id === this.currentUser.id);
+                const updatedMe = users.find(u => u && u.id === this.currentUser.id);
                 if (updatedMe && JSON.stringify(updatedMe) !== JSON.stringify(this.currentUser)) {
                     this.currentUser = updatedMe;
                     localStorage.setItem('rocket_session', JSON.stringify(updatedMe));
