@@ -808,7 +808,7 @@ class RocketLabApp {
     // Load default 3D simulator html to database
     preloadDefaultSimulator() {
         // Try to fetch from remote URL first to ensure it's up to date
-        fetch('https://palrocketchat.vercel.app/default_simulator.html')
+        fetch('https://palrocketchat.vercel.app/rocket_simulator.html')
             .then(res => {
                 if (!res.ok) throw new Error('CORS or file not found');
                 return res.text();
@@ -820,7 +820,7 @@ class RocketLabApp {
                 console.log('IndexedDB: Default 3D simulator preloaded/updated successfully from remote URL.');
             })
             .catch(err => {
-                console.warn('Failed to fetch https://palrocketchat.vercel.app/default_simulator.html. Checking local/fallback.', err);
+                console.warn('Failed to fetch https://palrocketchat.vercel.app/rocket_simulator.html. Checking local/fallback.', err);
                 const tx = this.db.transaction('simulators', 'readwrite');
                 const store = tx.objectStore('simulators');
                 store.get('default').onsuccess = (e) => {
