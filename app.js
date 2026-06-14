@@ -3822,6 +3822,9 @@ class RocketLabApp {
             return;
         }
 
+        const proceed = confirm("⚠️ 비밀번호 변경 시 로그인이 해제되며 새로운 비밀번호로 다시 로그인해야 합니다. 변경하시겠습니까?");
+        if (!proceed) return;
+
         // Update pw
         this.currentUser.pw = newPw;
         localStorage.setItem('rocket_session', JSON.stringify(this.currentUser));
@@ -3843,7 +3846,8 @@ class RocketLabApp {
             }
         }
 
-        alert("✅ 비밀번호가 성공적으로 변경되었습니다.");
+        alert("⚠️ 비밀번호 변경 성공! 로그인이 해제되오니 새로운 비밀번호로 다시 로그인해 주시기 바랍니다.");
+        this.logout();
         this.closeProfileModal();
     }
 }
