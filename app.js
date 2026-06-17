@@ -23,6 +23,10 @@ class RocketLabApp {
         // Chat send submit lock
         this.isSendingMessage = false;
         
+        // Sidebar collapse & resizing states
+        this.sidebarActive = true;
+        this.isResizing = false;
+        
         // Manual explicitly unread messages set
         this.explicitlyUnreadMessages = new Set();
         
@@ -31,6 +35,7 @@ class RocketLabApp {
         this.isFirebaseConnected = false;
         this.fbListeners = [];
         this.firebaseConfig = null;
+        this.firebaseSyncError = false;
         this.defaultFirebaseConfig = {
             databaseURL: "https://palrocketchat.asia-southeast1.firebasedatabase.app/"
         };
@@ -42,10 +47,11 @@ class RocketLabApp {
 
         // Predefined channels
         this.channels = [
-            { id: 'notice', name: '공지사항', desc: '관리자가 작성하는 공지사항 채널입니다. (일반 유저는 읽기만 가능)', readOnly: true },
-            { id: 'general', name: '자유대화', desc: '로켓 설계 및 실험에 대한 자유로운 이야기를 나눕니다.' },
-            { id: 'simulation', name: '시뮬레이션-공유', desc: '3D 시뮬레이션 결과와 HTML 실행 데이터를 공유하는 곳입니다.' },
-            { id: 'reports', name: '보고서-협업', desc: '비행 기록 보고서 작성 및 검토를 위한 협업 채널입니다.' }
+            { id: 'notice', name: '공지사항', desc: '관리자가 작성하는 공지사항 채널입니다. (일반 유저는 읽기만 가능)', readOnly: true, type: 'public', createdBy: 'system' },
+            { id: 'general', name: '자유대화', desc: '로켓 설계 및 실험에 대한 자유로운 이야기를 나눕니다.', type: 'public', createdBy: 'system' },
+            { id: 'simulation', name: '시뮬레이션-공유', desc: '3D 시뮬레이션 결과와 HTML 실행 데이터를 공유하는 곳입니다.', type: 'public', createdBy: 'system' },
+            { id: 'reports', name: '보고서-협업', desc: '비행 기록 보고서 작성 및 검토를 위한 협업 채널입니다.', type: 'public', createdBy: 'system' },
+            { id: 'bug-report', name: '버그-보고', desc: '시스템 및 프로그램 오동작에 대한 버그 보고 채널입니다. (일반 유저는 보고만 가능)', readOnly: true, type: 'public', createdBy: 'system' }
         ];
 
         // Default CSV / Table template datasets
@@ -207,12 +213,10 @@ class RocketLabApp {
         localStorage.removeItem('rocket_messages');
 
         this.initDOM();
+        this.initResizer();
         await this.initDatabase();
-        this.loadInitialData();
-        this.checkSession();
-        this.initTheme();
 
-        // Auto-connect to Firebase
+        // Auto-connect to Firebase (Done before checking session to guarantee immediate connection status)
         const savedConfig = localStorage.getItem('rocket_firebase_config');
         let configToUse = null;
         if (savedConfig) {
@@ -223,9 +227,10 @@ class RocketLabApp {
             }
         }
         
-        // Fallback to default databaseURL config if no saved config exists
+        // Enforce fallback to default databaseURL config and save it
         if (!configToUse && this.defaultFirebaseConfig && this.defaultFirebaseConfig.databaseURL) {
             configToUse = this.defaultFirebaseConfig;
+            localStorage.setItem('rocket_firebase_config', JSON.stringify(this.defaultFirebaseConfig));
         }
 
         if (configToUse) {
@@ -235,6 +240,10 @@ class RocketLabApp {
                 console.error("Failed to auto-connect to Firebase RTDB:", err);
             }
         }
+
+        this.loadInitialData();
+        this.checkSession();
+        this.initTheme();
     }
 
     initDOM() {
@@ -242,6 +251,31 @@ class RocketLabApp {
         this.loginForm = document.getElementById('auth-login-form');
         this.signupForm = document.getElementById('auth-signup-form');
         this.forgotForm = document.getElementById('forgot-request-form');
+    }
+
+    injectMainApp() {
+        // Prevent duplicate injection
+        if (document.getElementById('main-app')) return;
+
+        const template = document.getElementById('main-app-template');
+        if (!template) {
+            console.error("main-app-template not found!");
+            return;
+        }
+
+        const clone = template.content.cloneNode(true);
+        const wrapper = document.getElementById('app-device-wrapper');
+        if (wrapper) {
+            wrapper.appendChild(clone);
+        } else {
+            document.body.appendChild(clone);
+        }
+
+        // Re-run DOM binding for workspace elements
+        this.initMainAppDOM();
+    }
+
+    initMainAppDOM() {
         this.chatForm = document.getElementById('chat-send-form');
         this.chatInput = document.getElementById('chat-message-input');
         
@@ -267,6 +301,9 @@ class RocketLabApp {
 
         // Textarea auto-resize and Enter key send setup
         if (this.chatInput && this.chatInput.tagName === 'TEXTAREA') {
+            this.chatInput.style.height = 'auto';
+            this.chatInput.style.height = (this.chatInput.scrollHeight) + 'px';
+
             this.chatInput.addEventListener('input', () => {
                 this.chatInput.style.height = 'auto';
                 this.chatInput.style.height = (this.chatInput.scrollHeight) + 'px';
@@ -277,6 +314,202 @@ class RocketLabApp {
                     this.handleSendMessage(e);
                 }
             });
+            // Clipboard paste handler for images
+            this.chatInput.addEventListener('paste', (e) => {
+                const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        const file = items[i].getAsFile();
+                        if (file) {
+                            if (file.size > 1024 * 1024) {
+                                alert("❌ 붙여넣은 이미지 크기가 너무 큽니다. (최대 1MB 제한)\n더 큰 파일은 '파일 보관함' 탭을 이용해 공유해 주세요.");
+                                continue;
+                            }
+                            
+                            e.preventDefault();
+                            
+                            const reader = new FileReader();
+                            reader.onload = (evt) => {
+                                const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+                                const name = `pasted_image_${dateStr}.png`;
+                                
+                                this.activeChatAttachment = {
+                                    name: name,
+                                    size: file.size,
+                                    type: file.type,
+                                    data: evt.target.result
+                                };
+                                
+                                document.getElementById('chat-attachment-preview-container').classList.remove('hidden');
+                                document.getElementById('attach-file-name').innerText = name;
+                                document.getElementById('attach-file-size').innerText = `${(file.size / 1024).toFixed(1)} KB`;
+                                
+                                const icon = document.getElementById('attach-file-icon');
+                                if (icon) {
+                                    icon.className = 'fa-regular fa-file-image text-emerald-400';
+                                }
+                            };
+                            reader.readAsDataURL(file);
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+
+        // Bind theme button
+        this.bindThemeToggleButton();
+    }
+
+    initResizer() {
+        const handle = document.getElementById('device-resize-handle');
+        const wrapper = document.getElementById('app-device-wrapper');
+        const widthInput = document.getElementById('device-sim-width');
+        const heightInput = document.getElementById('device-sim-height');
+        const select = document.getElementById('device-sim-select');
+
+        if (!handle || !wrapper) return;
+
+        // Initialize inputs based on initial pc state
+        if (widthInput && heightInput) {
+            widthInput.value = wrapper.offsetWidth;
+            heightInput.value = wrapper.offsetHeight;
+        }
+
+        // 1. Direct inputs listeners
+        const handleInputChange = () => {
+            const w = parseInt(widthInput.value) || 360;
+            const h = parseInt(heightInput.value) || 800;
+            
+            // Limit minimum and maximum custom dimensions
+            const clampedW = Math.max(320, Math.min(1600, w));
+            const clampedH = Math.max(480, Math.min(1200, h));
+            
+            widthInput.value = clampedW;
+            heightInput.value = clampedH;
+
+            wrapper.style.width = `${clampedW}px`;
+            wrapper.style.height = `${clampedH}px`;
+            
+            // Add custom mode class and update dropdown selection
+            wrapper.className = '';
+            wrapper.classList.add('sim-custom');
+            if (select) select.value = 'custom';
+            
+            this.checkDeviceMobileState(clampedW);
+            this.triggerChartResize();
+        };
+
+        if (widthInput) widthInput.addEventListener('change', handleInputChange);
+        if (heightInput) heightInput.addEventListener('change', handleInputChange);
+
+        // 2. Drag resize mouse/touch listeners
+        let startX, startY, startW, startH;
+
+        const onMouseDown = (e) => {
+            e.preventDefault();
+            this.isResizing = true;
+            
+            startX = e.clientX || (e.touches && e.touches[0].clientX);
+            startY = e.clientY || (e.touches && e.touches[0].clientY);
+            startW = wrapper.offsetWidth;
+            startH = wrapper.offsetHeight;
+            
+            wrapper.classList.add('resizing-active');
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'se-resize';
+            
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+            window.addEventListener('touchmove', onMouseMove, { passive: false });
+            window.addEventListener('touchend', onMouseUp);
+        };
+
+        const onMouseMove = (e) => {
+            if (!this.isResizing) return;
+            if (e.cancelable) e.preventDefault();
+
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            const deltaX = clientX - startX;
+            const deltaY = clientY - startY;
+            
+            const newW = Math.max(320, Math.min(1600, startW + deltaX));
+            const newH = Math.max(480, Math.min(1200, startH + deltaY));
+            
+            wrapper.style.width = `${newW}px`;
+            wrapper.style.height = `${newH}px`;
+            
+            if (widthInput) widthInput.value = newW;
+            if (heightInput) heightInput.value = newH;
+            
+            if (select && select.value !== 'custom') {
+                wrapper.className = '';
+                wrapper.classList.add('sim-custom');
+                select.value = 'custom';
+            }
+            
+            this.checkDeviceMobileState(newW);
+        };
+
+        const onMouseUp = () => {
+            if (!this.isResizing) return;
+            this.isResizing = false;
+            
+            wrapper.classList.remove('resizing-active');
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+            
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('mouseup', onMouseUp);
+            window.removeEventListener('touchmove', onMouseMove);
+            window.removeEventListener('touchend', onMouseUp);
+            
+            this.triggerChartResize();
+        };
+
+        handle.addEventListener('mousedown', onMouseDown);
+        handle.addEventListener('touchstart', onMouseDown);
+    }
+
+    checkDeviceMobileState(width) {
+        const wrapper = document.getElementById('app-device-wrapper');
+        if (!wrapper) return;
+        
+        // If width is <= 640px, it acts like mobile device mode
+        if (width <= 640) {
+            if (!wrapper.classList.contains('device-mobile')) {
+                wrapper.classList.add('device-mobile');
+                wrapper.classList.remove('sidebar-active');
+                this.sidebarActive = false;
+            }
+        } else {
+            if (wrapper.classList.contains('device-mobile')) {
+                wrapper.classList.remove('device-mobile');
+                wrapper.classList.add('sidebar-active');
+                this.sidebarActive = true;
+            }
+        }
+    }
+
+    triggerChartResize() {
+        if (this.activeTab === 'table' && this.chartInstance) {
+            setTimeout(() => {
+                this.drawTableChart();
+            }, 300);
+        }
+    }
+
+    toggleSidebar() {
+        const wrapper = document.getElementById('app-device-wrapper');
+        if (!wrapper) return;
+        
+        this.sidebarActive = !this.sidebarActive;
+        if (this.sidebarActive) {
+            wrapper.classList.add('sidebar-active');
+        } else {
+            wrapper.classList.remove('sidebar-active');
         }
     }
 
@@ -310,12 +543,45 @@ class RocketLabApp {
     }
 
     // FIREBASE REALTIME DATABASE SYNC SYSTEM
-    async connectFirebase(config, quiet = false) {
+    updateSyncBadgeUI() {
         const statusBadge = document.getElementById('sync-status-badge');
         const statusDot = document.getElementById('sync-status-dot');
         const statusText = document.getElementById('sync-status-text');
 
-        if (statusText) {
+        if (statusBadge && statusDot && statusText) {
+            if (this.firebaseSyncError) {
+                statusBadge.className = "flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/15 border border-rose-500/25 text-rose-400 rounded-xl text-[11px] font-semibold";
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-rose-400 animate-pulse";
+                statusText.innerText = "클라우드 동기화 에러 (연결 상태 확인)";
+            } else if (this.isFirebaseConnected) {
+                statusBadge.className = "flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 rounded-xl text-[11px] font-semibold";
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
+                statusText.innerText = "실시간 클라우드 동기화";
+            } else {
+                statusBadge.className = "flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/40 border border-slate-700/50 rounded-xl text-[11px] font-semibold text-slate-400";
+                statusDot.className = "w-2.5 h-2.5 rounded-full bg-slate-500 animate-pulse";
+                statusText.innerText = "로컬 저장소 모드";
+            }
+        }
+
+        // Fill Form inputs in Admin panel if present
+        const elUrl = document.getElementById('fb-database-url');
+        if (elUrl) {
+            if (this.isFirebaseConnected && this.firebaseConfig) {
+                elUrl.value = this.firebaseConfig.databaseURL || '';
+            } else {
+                elUrl.value = '';
+            }
+        }
+    }
+
+    async connectFirebase(config, quiet = false) {
+        this.firebaseSyncError = false;
+        const statusBadge = document.getElementById('sync-status-badge');
+        const statusDot = document.getElementById('sync-status-dot');
+        const statusText = document.getElementById('sync-status-text');
+
+        if (statusText && statusDot) {
             statusText.innerText = "연결 중...";
             statusDot.className = "w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping";
         }
@@ -335,15 +601,7 @@ class RocketLabApp {
             localStorage.setItem('rocket_firebase_config', JSON.stringify(config));
 
             // Update Header Status Badge UI
-            if (statusBadge && statusDot && statusText) {
-                statusBadge.className = "flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 rounded-xl text-[11px] font-semibold";
-                statusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
-                statusText.innerText = "실시간 클라우드 동기화";
-            }
-
-            // Fill Form inputs in Admin panel if present
-            const elUrl = document.getElementById('fb-database-url');
-            if (elUrl) elUrl.value = config.databaseURL || '';
+            this.updateSyncBadgeUI();
 
             // Establish real-time RTDB listeners
             this.setupRealtimeListeners();
@@ -383,22 +641,11 @@ class RocketLabApp {
         this.fbRef = null;
         this.isFirebaseConnected = false;
         this.firebaseConfig = null;
+        this.firebaseSyncError = false;
         localStorage.removeItem('rocket_firebase_config');
 
         // Restore status badge UI to local mode
-        const statusBadge = document.getElementById('sync-status-badge');
-        const statusDot = document.getElementById('sync-status-dot');
-        const statusText = document.getElementById('sync-status-text');
-
-        if (statusBadge && statusDot && statusText) {
-            statusBadge.className = "flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/40 border border-slate-700/50 rounded-xl text-[11px] font-semibold text-slate-400";
-            statusDot.className = "w-2.5 h-2.5 rounded-full bg-slate-500 animate-pulse";
-            statusText.innerText = "로컬 저장소 모드";
-        }
-
-        // Clear Admin panel config inputs
-        const elUrl = document.getElementById('fb-database-url');
-        if (elUrl) elUrl.value = '';
+        this.updateSyncBadgeUI();
 
         // Re-render local data
         this.loadInitialData();
@@ -409,14 +656,8 @@ class RocketLabApp {
 
     updateSyncErrorUI(err) {
         console.error("Firebase Sync Error:", err);
-        const statusBadge = document.getElementById('sync-status-badge');
-        const statusDot = document.getElementById('sync-status-dot');
-        const statusText = document.getElementById('sync-status-text');
-        if (statusBadge && statusDot && statusText) {
-            statusBadge.className = "flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/15 border border-rose-500/25 text-rose-400 rounded-xl text-[11px] font-semibold";
-            statusDot.className = "w-2.5 h-2.5 rounded-full bg-rose-400 animate-pulse";
-            statusText.innerText = "클라우드 동기화 에러 (연결 상태 확인)";
-        }
+        this.firebaseSyncError = true;
+        this.updateSyncBadgeUI();
     }
 
     setupRealtimeListeners() {
@@ -651,6 +892,48 @@ class RocketLabApp {
             }
             this.syncRealtimeFilesToIndexedDB(files);
         });
+
+        // 8. Channels Sync
+        const channelsRef = this.fbRef.child('channels');
+        registerListener(channelsRef, 'value', snapshot => {
+            const val = snapshot.val();
+            let channelsList = [];
+            if (val) {
+                Object.keys(val).forEach(key => {
+                    const ch = val[key];
+                    if (ch && typeof ch === 'object') {
+                        if (!ch.id) ch.id = key;
+                        channelsList.push(ch);
+                    }
+                });
+            } else {
+                const defaultChannels = [
+                    { id: 'notice', name: '공지사항', desc: '관리자가 작성하는 공지사항 채널입니다. (일반 유저는 읽기만 가능)', readOnly: true, type: 'public', createdBy: 'system' },
+                    { id: 'general', name: '자유대화', desc: '로켓 설계 및 실험에 대한 자유로운 이야기를 나눕니다.', type: 'public', createdBy: 'system' },
+                    { id: 'simulation', name: '시뮬레이션-공유', desc: '3D 시뮬레이션 결과와 HTML 실행 데이터를 공유하는 곳입니다.', type: 'public', createdBy: 'system' },
+                    { id: 'reports', name: '보고서-협업', desc: '비행 기록 보고서 작성 및 검토를 위한 협업 채널입니다.', type: 'public', createdBy: 'system' },
+                    { id: 'bug-report', name: '버그-보고', desc: '시스템 및 프로그램 오동작에 대한 버그 보고 채널입니다. (일반 유저는 보고만 가능)', readOnly: true, type: 'public', createdBy: 'system' }
+                ];
+                defaultChannels.forEach(ch => {
+                    this.fbRef.child('channels').child(ch.id).set(ch);
+                });
+                channelsList = defaultChannels;
+            }
+
+            this.channels = channelsList;
+            localStorage.setItem('rocket_channels', JSON.stringify(this.channels));
+
+            if (this.currentChannelId && !this.channels.some(c => c.id === this.currentChannelId)) {
+                this.currentChannelId = 'general';
+                this.markChannelMessagesAsRead(this.currentChannelId);
+            }
+
+            if (this.currentUser) {
+                this.renderChannelsList();
+                this.renderDMsList();
+                this.updateActiveChannelInfo();
+            }
+        });
     }
 
     async syncRealtimeFilesToIndexedDB(fsFiles) {
@@ -732,7 +1015,7 @@ class RocketLabApp {
             const cursor = e.target.result;
             if (cursor) {
                 const f = cursor.value;
-                if (f.size > 900 * 1024) {
+                if (f.size > 1024 * 1024) {
                     console.warn(`File '${f.name}' is too large to migrate (limit 1MB).`);
                 } else {
                     this.fbRef.child('files').push({
@@ -802,6 +1085,26 @@ class RocketLabApp {
 
     // Load initial config and database seeding
     loadInitialData() {
+        // 1.5. Seed Channels if empty
+        let localChannels = localStorage.getItem('rocket_channels');
+        if (!localChannels) {
+            const defaultChannels = [
+                { id: 'notice', name: '공지사항', desc: '관리자가 작성하는 공지사항 채널입니다. (일반 유저는 읽기만 가능)', readOnly: true, type: 'public', createdBy: 'system' },
+                { id: 'general', name: '자유대화', desc: '로켓 설계 및 실험에 대한 자유로운 이야기를 나눕니다.', type: 'public', createdBy: 'system' },
+                { id: 'simulation', name: '시뮬레이션-공유', desc: '3D 시뮬레이션 결과와 HTML 실행 데이터를 공유하는 곳입니다.', type: 'public', createdBy: 'system' },
+                { id: 'reports', name: '보고서-협업', desc: '비행 기록 보고서 작성 및 검토를 위한 협업 채널입니다.', type: 'public', createdBy: 'system' },
+                { id: 'bug-report', name: '버그-보고', desc: '시스템 및 프로그램 오동작에 대한 버그 보고 채널입니다. (일반 유저는 보고만 가능)', readOnly: true, type: 'public', createdBy: 'system' }
+            ];
+            localStorage.setItem('rocket_channels', JSON.stringify(defaultChannels));
+            this.channels = defaultChannels;
+        } else {
+            try {
+                this.channels = JSON.parse(localChannels);
+            } catch (err) {
+                console.error("Failed to parse local channels:", err);
+            }
+        }
+
         // 1. Seed Users if empty (starts empty, users must sign up)
         let users = localStorage.getItem('rocket_users');
         if (!users) {
@@ -918,6 +1221,12 @@ class RocketLabApp {
     }
 
     showMainApp() {
+        // Securely inject the main app first
+        this.injectMainApp();
+
+        // Update the Firebase Sync Badge and form fields in Admin panel in case it connected early
+        this.updateSyncBadgeUI();
+
         document.getElementById('auth-overlay').classList.add('hidden');
         document.getElementById('main-app').classList.remove('hidden');
         
@@ -942,9 +1251,29 @@ class RocketLabApp {
             document.getElementById('sidebar-admin-section').classList.add('hidden');
         }
 
+        // Reset to chat tab if normal member has activeTab = admin (Prevents unauthorized console leak)
+        if (this.activeTab === 'admin' && this.currentUser.role !== 'ADMIN') {
+            this.activeTab = 'chat';
+        }
+
+        // Setup initial sidebar state based on width
+        const wrapper = document.getElementById('app-device-wrapper');
+        if (wrapper) {
+            const isMobile = wrapper.classList.contains('device-mobile') || wrapper.offsetWidth <= 640;
+            if (isMobile) {
+                wrapper.classList.remove('sidebar-active');
+                this.sidebarActive = false;
+            } else {
+                wrapper.classList.add('sidebar-active');
+                this.sidebarActive = true;
+            }
+        }
+
         // Render current channel or screen
         this.switchTab(this.activeTab);
         this.renderChannelsList();
+        this.renderDMsList();
+        this.updateActiveChannelInfo();
     }
 
     toggleAuthView(view) {
@@ -959,10 +1288,34 @@ class RocketLabApp {
         }
     }
 
-    handleLoginSubmit(e) {
+    async handleLoginSubmit(e) {
         e.preventDefault();
         const idInput = document.getElementById('login-id').value.trim();
         const pwInput = document.getElementById('login-pw').value;
+
+        // If firebase is connected, directly fetch and check credentials from Firebase
+        if (this.isFirebaseConnected && this.fbRef) {
+            try {
+                const snapshot = await this.fbRef.child('users').child(idInput).once('value');
+                if (snapshot.exists()) {
+                    const u = snapshot.val();
+                    if (u && u.pw === pwInput) {
+                        localStorage.setItem('rocket_session', JSON.stringify(u));
+                        this.currentUser = u;
+                        
+                        // Clean forms
+                        document.getElementById('login-id').value = '';
+                        document.getElementById('login-pw').value = '';
+                        
+                        this.showToast("로그인에 성공하였습니다.", "success");
+                        this.showMainApp();
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.error("Direct Firebase login check failed, falling back to local list:", err);
+            }
+        }
 
         const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
         const matched = users.find(u => u.id === idInput && u.pw === pwInput);
@@ -975,9 +1328,10 @@ class RocketLabApp {
             document.getElementById('login-id').value = '';
             document.getElementById('login-pw').value = '';
             
+            this.showToast("로그인에 성공하였습니다.", "success");
             this.showMainApp();
         } else {
-            alert('❌ 아이디 혹은 비밀번호가 일치하지 않습니다.');
+            this.showToast("아이디 혹은 비밀번호가 일치하지 않습니다.", "error");
         }
     }
 
@@ -988,14 +1342,30 @@ class RocketLabApp {
             return;
         }
 
-        const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
-        const exists = users.some(u => u.id === idInput);
+        const checkDuplicate = async () => {
+            if (this.isFirebaseConnected && this.fbRef) {
+                try {
+                    const snapshot = await this.fbRef.child('users').child(idInput).once('value');
+                    if (snapshot.exists()) {
+                        alert('❌ 이미 사용 중인 아이디입니다.');
+                    } else {
+                        alert('✅ 사용 가능한 아이디입니다.');
+                    }
+                    return;
+                } catch (err) {
+                    console.error("Firebase duplicate check failed, falling back:", err);
+                }
+            }
+            const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
+            const exists = users.some(u => u.id === idInput);
+            if (exists) {
+                alert('❌ 이미 사용 중인 아이디입니다.');
+            } else {
+                alert('✅ 사용 가능한 아이디입니다.');
+            }
+        };
 
-        if (exists) {
-            alert('❌ 이미 사용 중인 아이디입니다.');
-        } else {
-            alert('✅ 사용 가능한 아이디입니다.');
-        }
+        checkDuplicate();
     }
 
     handleSignupSubmit(e) {
@@ -1017,14 +1387,6 @@ class RocketLabApp {
             return;
         }
 
-        const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
-        
-        // 3. Validate ID duplicate
-        if (users.some(u => u.id === idInput)) {
-            alert('❌ 이미 존재하는 아이디입니다. 다른 아이디로 가입해 주세요.');
-            return;
-        }
-
         // 4. Assign Admin status automatically if matches ADMIN_NAMES
         const role = this.adminNames.includes(nameInput) ? 'ADMIN' : 'MEMBER';
 
@@ -1040,24 +1402,46 @@ class RocketLabApp {
             this.toggleAuthView('login');
         };
 
-        if (this.isFirebaseConnected && this.fbRef) {
-            this.fbRef.child('users').child(newUser.id).set(newUser)
-                .then(() => completeSignup())
-                .catch(err => {
-                    console.error("Firebase RTDB registration error:", err);
-                    alert("❌ 실시간 클라우드 가입 실패. 인터넷 연결을 확인해 주세요.");
-                });
-        } else {
+        const checkAndRegister = async () => {
+            if (this.isFirebaseConnected && this.fbRef) {
+                try {
+                    const snapshot = await this.fbRef.child('users').child(idInput).once('value');
+                    if (snapshot.exists()) {
+                        alert('❌ 이미 존재하는 아이디입니다. 다른 아이디로 가입해 주세요.');
+                        return;
+                    }
+                    
+                    this.fbRef.child('users').child(newUser.id).set(newUser)
+                        .then(() => completeSignup())
+                        .catch(err => {
+                            console.error("Firebase RTDB registration error:", err);
+                            alert("❌ 실시간 클라우드 가입 실패. 인터넷 연결을 확인해 주세요.");
+                        });
+                    return;
+                } catch (err) {
+                    console.error("Firebase duplicate check failed during signup:", err);
+                }
+            }
+            
+            // Offline fallback
+            const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
+            if (users.some(u => u.id === idInput)) {
+                alert('❌ 이미 존재하는 아이디입니다. 다른 아이디로 가입해 주세요.');
+                return;
+            }
             users.push(newUser);
             localStorage.setItem('rocket_users', JSON.stringify(users));
             completeSignup();
-        }
+        };
+
+        checkAndRegister();
     }
 
     logout() {
         localStorage.removeItem('rocket_session');
         this.currentUser = null;
-        this.showAuthOverlay();
+        // Hard reload for clean memory wipe and DOM refresh
+        location.reload();
     }
 
     // ID/PW Recovery Inquiry Modals
@@ -1149,14 +1533,21 @@ class RocketLabApp {
 
     // THEME SELECTION MODULE
     initTheme() {
-        const themeBtn = document.getElementById('theme-toggle-btn');
         const savedTheme = localStorage.getItem('rocket_theme');
-        
         if (savedTheme === 'light') {
             document.body.classList.add('light-theme');
-            themeBtn.innerHTML = '<i class="fa-solid fa-sun text-amber-500"></i>';
         } else {
             document.body.classList.remove('light-theme');
+        }
+    }
+
+    bindThemeToggleButton() {
+        const themeBtn = document.getElementById('theme-toggle-btn');
+        if (!themeBtn) return;
+        const savedTheme = localStorage.getItem('rocket_theme');
+        if (savedTheme === 'light') {
+            themeBtn.innerHTML = '<i class="fa-solid fa-sun text-amber-500"></i>';
+        } else {
             themeBtn.innerHTML = '<i class="fa-solid fa-moon text-slate-400"></i>';
         }
 
@@ -1178,6 +1569,10 @@ class RocketLabApp {
 
     // NAVIGATION SYSTEM
     switchTab(tabId) {
+        // Security guard: prevent normal user from switching to admin panel
+        if (tabId === 'admin' && (!this.currentUser || this.currentUser.role !== 'ADMIN')) {
+            tabId = 'chat';
+        }
         this.activeTab = tabId;
         
         // Update nav button highlights
@@ -1228,36 +1623,836 @@ class RocketLabApp {
     }
 
     // CHAT MODULE
+    // CHAT MODULE
     renderChannelsList() {
         const container = document.getElementById('channels-list');
+        if (!container) return;
         container.innerHTML = '';
 
+        if (!this.channels) this.channels = [];
+
         this.channels.forEach(ch => {
+            if (ch.type === 'dm') return;
+            
+            const isAdmin = this.currentUser && this.currentUser.role === 'ADMIN';
+            const isChMember = this.currentUser && (ch.type === 'public' || this.isChannelMember(ch, this.currentUser.id));
+            
+            if (!isAdmin && !isChMember) return;
+
             const btn = document.createElement('button');
             const isActive = ch.id === this.currentChannelId;
-            btn.className = `w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition ${isActive ? 'bg-slate-800/80 text-blue-300 font-semibold' : 'hover:bg-slate-800/30 text-slate-400 hover:text-slate-200'}`;
+            btn.className = `w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition ${isActive ? 'bg-slate-800/80 text-blue-300 font-semibold border border-blue-500/20' : 'hover:bg-slate-800/30 text-slate-400 hover:text-slate-200'}`;
             btn.onclick = () => {
                 if (this.explicitlyUnreadMessages) {
                     this.explicitlyUnreadMessages.clear();
                 }
                 this.currentChannelId = ch.id;
-                document.getElementById('active-channel-name').innerText = ch.name;
-                document.getElementById('active-channel-desc').innerText = ch.desc;
+                this.markChannelMessagesAsRead(this.currentChannelId);
                 this.renderChannelsList();
+                this.renderDMsList();
+                this.updateActiveChannelInfo();
                 this.switchTab('chat');
             };
             
             const leftDiv = document.createElement('div');
-            leftDiv.className = 'flex items-center gap-2';
-            leftDiv.innerHTML = `<span class="opacity-60 text-xs">#</span> <span>${ch.name}</span>`;
+            leftDiv.className = 'flex items-center gap-2 overflow-hidden';
+            
+            const icon = ch.type === 'private' ? '<i class="fa-solid fa-lock text-[10px] opacity-60"></i>' : '<span class="opacity-60 text-xs">#</span>';
+            leftDiv.innerHTML = `${icon} <span class="truncate">${ch.name}</span>`;
             
             btn.appendChild(leftDiv);
             
             if (ch.readOnly) {
-                btn.innerHTML += `<i class="fa-solid fa-lock text-[10px] opacity-40" title="읽기전용"></i>`;
+                btn.innerHTML += `<i class="fa-solid fa-eye text-[10px] opacity-40" title="읽기전용"></i>`;
             }
             container.appendChild(btn);
         });
+    }
+
+    renderDMsList() {
+        const container = document.getElementById('dms-list');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (!this.channels) this.channels = [];
+
+        this.channels.forEach(ch => {
+            if (ch.type !== 'dm') return;
+            
+            const isAdmin = this.currentUser && this.currentUser.role === 'ADMIN';
+            const isChMember = this.currentUser && this.isChannelMember(ch, this.currentUser.id);
+            
+            if (!isAdmin && !isChMember) return;
+
+            const btn = document.createElement('button');
+            const isActive = ch.id === this.currentChannelId;
+            btn.className = `w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition ${isActive ? 'bg-slate-800/80 text-blue-300 font-semibold border border-blue-500/20' : 'hover:bg-slate-800/30 text-slate-400 hover:text-slate-200'}`;
+            btn.onclick = () => {
+                if (this.explicitlyUnreadMessages) {
+                    this.explicitlyUnreadMessages.clear();
+                }
+                this.currentChannelId = ch.id;
+                this.markChannelMessagesAsRead(this.currentChannelId);
+                this.renderChannelsList();
+                this.renderDMsList();
+                this.updateActiveChannelInfo();
+                this.switchTab('chat');
+            };
+            
+            const leftDiv = document.createElement('div');
+            leftDiv.className = 'flex items-center gap-2 overflow-hidden';
+            
+            let dmDisplayName = ch.name;
+            if (this.currentUser) {
+                if (ch.members && ch.members.includes(this.currentUser.id)) {
+                    const otherUser = this.getOtherDMUser(ch);
+                    dmDisplayName = otherUser ? otherUser.name : ch.name;
+                } else {
+                    const memberNames = ch.members ? ch.members.join(' & ') : 'DM';
+                    dmDisplayName = `[Admin] ${memberNames}`;
+                }
+            }
+
+            leftDiv.innerHTML = `<i class="fa-regular fa-comment text-xs opacity-60"></i> <span class="truncate">${dmDisplayName}</span>`;
+            btn.appendChild(leftDiv);
+            
+            container.appendChild(btn);
+        });
+    }
+
+    isChannelMember(ch, userId) {
+        if (!ch.members) return false;
+        if (Array.isArray(ch.members)) {
+            return ch.members.includes(userId);
+        }
+        if (typeof ch.members === 'object') {
+            return !!ch.members[userId];
+        }
+        if (typeof ch.members === 'string') {
+            return ch.members.split(',').map(s => s.trim()).includes(userId);
+        }
+        return false;
+    }
+
+    getOtherDMUser(ch) {
+        if (ch.type !== 'dm' || !ch.members || !this.currentUser) return null;
+        const otherId = ch.members.find(mId => mId !== this.currentUser.id);
+        if (!otherId) return null;
+        const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
+        return users.find(u => u && u.id === otherId) || { id: otherId, name: otherId };
+    }
+
+    updateActiveChannelInfo() {
+        const activeCh = this.channels.find(c => c.id === this.currentChannelId);
+        if (!activeCh) return;
+        
+        const headerName = document.getElementById('active-channel-name');
+        const headerDesc = document.getElementById('active-channel-desc');
+        if (headerName) {
+            if (activeCh.type === 'dm') {
+                const otherUser = this.getOtherDMUser(activeCh);
+                headerName.innerText = otherUser ? `${otherUser.name} (@${otherUser.id})` : activeCh.name;
+            } else {
+                headerName.innerText = activeCh.name;
+            }
+        }
+        if (headerDesc) headerDesc.innerText = activeCh.desc || '';
+        
+        const mCountVal = document.getElementById('member-count-val');
+        if (mCountVal) {
+            if (activeCh.type === 'public') {
+                const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
+                mCountVal.innerText = users.length;
+            } else if (activeCh.type === 'private' || activeCh.type === 'dm') {
+                mCountVal.innerText = activeCh.members ? activeCh.members.length : 0;
+            }
+        }
+        
+        const actionsContainer = document.getElementById('channel-header-actions');
+        if (actionsContainer) {
+            actionsContainer.innerHTML = '';
+            
+            const isSystemCh = ['notice', 'general', 'simulation', 'reports', 'bug-report'].includes(activeCh.id);
+            
+            if (!isSystemCh) {
+                const isCreator = activeCh.createdBy === this.currentUser.id;
+                const isAdmin = this.currentUser.role === 'ADMIN';
+                
+                if (isCreator || isAdmin) {
+                    const editBtn = document.createElement('button');
+                    editBtn.className = 'text-slate-400 hover:text-amber-400 p-1.5 transition';
+                    editBtn.innerHTML = '<i class="fa-solid fa-pencil text-sm"></i>';
+                    editBtn.title = '채팅방 수정';
+                    editBtn.onclick = () => this.openEditChannelModal(activeCh.id);
+                    actionsContainer.appendChild(editBtn);
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'text-slate-400 hover:text-rose-400 p-1.5 transition';
+                    deleteBtn.innerHTML = '<i class="fa-solid fa-trash text-sm"></i>';
+                    deleteBtn.title = '채팅방 삭제';
+                    deleteBtn.onclick = () => this.handleDeleteChannel(activeCh.id);
+                    actionsContainer.appendChild(deleteBtn);
+                }
+            }
+        }
+    }
+
+    openCreateChannelModal() {
+        if (!this.currentUser) return;
+
+        const publicOption = document.getElementById('opt-channel-create-public');
+        if (publicOption) {
+            if (this.currentUser.role === 'ADMIN') {
+                publicOption.classList.remove('hidden');
+            } else {
+                publicOption.classList.add('hidden');
+            }
+        }
+
+        const typeSelect = document.getElementById('channel-create-type');
+        typeSelect.value = 'private';
+        document.getElementById('channel-create-name').value = '';
+        document.getElementById('channel-create-desc').value = '';
+        const roCheckbox = document.getElementById('channel-create-readonly');
+        if (roCheckbox) roCheckbox.checked = false;
+        
+        this.handleCreateChannelTypeChange();
+        this.populateCreateMembersList();
+
+        document.getElementById('channel-create-modal').classList.remove('hidden');
+        document.getElementById('channel-create-modal').classList.add('flex');
+    }
+
+    openCreateDMModal() {
+        if (!this.currentUser) return;
+        
+        const typeSelect = document.getElementById('channel-create-type');
+        typeSelect.value = 'dm';
+        this.handleCreateChannelTypeChange();
+        this.populateCreateMembersList(true);
+        
+        document.getElementById('channel-create-modal').classList.remove('hidden');
+        document.getElementById('channel-create-modal').classList.add('flex');
+    }
+
+    closeCreateChannelModal() {
+        document.getElementById('channel-create-modal').classList.add('hidden');
+        document.getElementById('channel-create-modal').classList.remove('flex');
+    }
+
+    handleCreateChannelTypeChange() {
+        const type = document.getElementById('channel-create-type').value;
+        const nameField = document.getElementById('channel-create-name-field');
+        const descField = document.getElementById('channel-create-desc-field');
+        const readonlyField = document.getElementById('channel-create-readonly-field');
+        const membersField = document.getElementById('channel-create-members-field');
+        
+        if (type === 'dm') {
+            if (nameField) nameField.classList.add('hidden');
+            if (descField) descField.classList.add('hidden');
+            if (readonlyField) readonlyField.classList.add('hidden');
+            if (membersField) membersField.classList.remove('hidden');
+            this.populateCreateMembersList(true);
+        } else if (type === 'public') {
+            if (nameField) nameField.classList.remove('hidden');
+            if (descField) descField.classList.remove('hidden');
+            if (readonlyField) readonlyField.classList.remove('hidden');
+            if (membersField) membersField.classList.add('hidden');
+        } else {
+            if (nameField) nameField.classList.remove('hidden');
+            if (descField) descField.classList.remove('hidden');
+            if (readonlyField) readonlyField.classList.add('hidden');
+            if (membersField) membersField.classList.remove('hidden');
+            this.populateCreateMembersList(false);
+        }
+    }
+
+    populateCreateMembersList(isSingleSelect = false) {
+        const container = document.getElementById('channel-create-members-list');
+        if (!container) return;
+        container.innerHTML = '';
+        
+        const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
+        const otherUsers = users.filter(u => u && u.id !== this.currentUser.id);
+        
+        if (otherUsers.length === 0) {
+            container.innerHTML = '<div class="text-[11px] text-slate-500 p-2 text-center">초대 가능한 유저가 없습니다.</div>';
+            return;
+        }
+        
+        otherUsers.forEach(u => {
+            const div = document.createElement('div');
+            div.className = 'flex items-center gap-2 text-xs py-1 px-1.5 hover:bg-slate-800/50 rounded transition select-none cursor-pointer';
+            
+            const inputId = `invite-user-${u.id}`;
+            const inputType = isSingleSelect ? 'radio' : 'checkbox';
+            const nameAttr = isSingleSelect ? 'invite-dm-member' : 'invite-channel-members';
+            
+            div.innerHTML = `
+                <input type="${inputType}" name="${nameAttr}" value="${u.id}" id="${inputId}" class="rounded text-blue-600 focus:ring-0 focus:ring-offset-0 bg-slate-900 border-slate-700">
+                <label for="${inputId}" class="flex-1 cursor-pointer flex items-center justify-between text-slate-300">
+                    <span>${u.name} (@${u.id})</span>
+                    <span class="text-[9px] bg-slate-800 text-slate-500 px-1 rounded">${u.role === 'ADMIN' ? '관리자' : '멤버'}</span>
+                </label>
+            `;
+            
+            div.onclick = (e) => {
+                if (e.target.tagName !== 'INPUT') {
+                    const input = div.querySelector('input');
+                    input.checked = !input.checked;
+                }
+            };
+            
+            container.appendChild(div);
+        });
+    }
+
+    handleCreateChannelSubmit() {
+        if (!this.currentUser) return;
+        
+        const type = document.getElementById('channel-create-type').value;
+        
+        if (type === 'dm') {
+            const checkedInputs = document.querySelectorAll('input[name="invite-dm-member"]:checked');
+            if (checkedInputs.length !== 1) {
+                alert("대화할 유저를 선택해 주세요.");
+                return;
+            }
+            const otherUserId = checkedInputs[0].value;
+            const sortedIds = [this.currentUser.id, otherUserId].sort();
+            const dmId = 'dm-' + sortedIds.join('-');
+            
+            const exists = this.channels.find(c => c.id === dmId);
+            if (exists) {
+                this.currentChannelId = dmId;
+                this.closeCreateChannelModal();
+                this.renderChannelsList();
+                this.renderDMsList();
+                this.updateActiveChannelInfo();
+                this.switchTab('chat');
+                return;
+            }
+            
+            const otherUserObj = JSON.parse(localStorage.getItem('rocket_users') || '[]').find(u => u.id === otherUserId);
+            const otherUserName = otherUserObj ? otherUserObj.name : otherUserId;
+            
+            const newDM = {
+                id: dmId,
+                type: 'dm',
+                name: `${this.currentUser.name}, ${otherUserName}`,
+                desc: '1:1 다이렉트 메시지',
+                createdBy: this.currentUser.id,
+                members: sortedIds
+            };
+            
+            if (this.isFirebaseConnected && this.fbRef) {
+                this.fbRef.child('channels').child(dmId).set(newDM)
+                    .then(() => {
+                        this.currentChannelId = dmId;
+                        this.closeCreateChannelModal();
+                    })
+                    .catch(err => alert("DM 생성에 실패했습니다: " + err.message));
+            } else {
+                this.channels.push(newDM);
+                localStorage.setItem('rocket_channels', JSON.stringify(this.channels));
+                this.currentChannelId = dmId;
+                this.closeCreateChannelModal();
+                this.renderChannelsList();
+                this.renderDMsList();
+                this.updateActiveChannelInfo();
+                this.switchTab('chat');
+            }
+        } else {
+            const name = document.getElementById('channel-create-name').value.trim();
+            if (!name) {
+                alert("채팅방 이름을 입력해 주세요.");
+                return;
+            }
+            
+            const desc = document.getElementById('channel-create-desc').value.trim();
+            const readonly = type === 'public' && document.getElementById('channel-create-readonly').checked;
+            
+            let members = [this.currentUser.id];
+            if (type === 'private') {
+                const checkedMembers = document.querySelectorAll('input[name="invite-channel-members"]:checked');
+                checkedMembers.forEach(input => {
+                    members.push(input.value);
+                });
+            }
+            
+            let chId;
+            if (this.isFirebaseConnected && this.fbRef) {
+                chId = this.fbRef.child('channels').push().key;
+            } else {
+                chId = 'ch-' + Date.now();
+            }
+            
+            const newChannel = {
+                id: chId,
+                type: type,
+                name: name,
+                desc: desc || '',
+                createdBy: this.currentUser.id,
+                members: type === 'private' ? members : null,
+                readOnly: !!readonly
+            };
+            
+            if (this.isFirebaseConnected && this.fbRef) {
+                this.fbRef.child('channels').child(chId).set(newChannel)
+                    .then(() => {
+                        this.currentChannelId = chId;
+                        this.closeCreateChannelModal();
+                    })
+                    .catch(err => alert("채널 생성에 실패했습니다: " + err.message));
+            } else {
+                this.channels.push(newChannel);
+                localStorage.setItem('rocket_channels', JSON.stringify(this.channels));
+                this.currentChannelId = chId;
+                this.closeCreateChannelModal();
+                this.renderChannelsList();
+                this.renderDMsList();
+                this.updateActiveChannelInfo();
+                this.switchTab('chat');
+            }
+        }
+    }
+
+    openEditChannelModal(channelId) {
+        const ch = this.channels.find(c => c.id === channelId);
+        if (!ch) return;
+
+        this.editingChannelId = channelId;
+
+        document.getElementById('channel-edit-name').value = ch.name;
+        document.getElementById('channel-edit-desc').value = ch.desc || '';
+
+        const membersField = document.getElementById('channel-edit-members-field');
+        if (membersField) {
+            if (ch.type === 'dm' || ch.type === 'public') {
+                membersField.classList.add('hidden');
+            } else {
+                membersField.classList.remove('hidden');
+                this.populateEditMembersList(ch);
+            }
+        }
+
+        document.getElementById('channel-edit-modal').classList.remove('hidden');
+        document.getElementById('channel-edit-modal').classList.add('flex');
+    }
+
+    closeEditChannelModal() {
+        document.getElementById('channel-edit-modal').classList.add('hidden');
+        document.getElementById('channel-edit-modal').classList.remove('flex');
+        this.editingChannelId = null;
+    }
+
+    populateEditMembersList(ch) {
+        const container = document.getElementById('channel-edit-members-list');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
+        const creatorId = ch.createdBy;
+
+        users.forEach(u => {
+            if (!u) return;
+            const isCreator = u.id === creatorId;
+            const isMember = this.isChannelMember(ch, u.id);
+
+            const div = document.createElement('div');
+            div.className = 'flex items-center gap-2 text-xs py-1 px-1.5 hover:bg-slate-800/50 rounded transition select-none cursor-pointer';
+
+            const inputId = `edit-user-${u.id}`;
+            const disabledAttr = isCreator ? 'disabled checked' : (isMember ? 'checked' : '');
+
+            div.innerHTML = `
+                <input type="checkbox" name="edit-channel-members" value="${u.id}" id="${inputId}" ${disabledAttr} class="rounded text-blue-600 focus:ring-0 focus:ring-offset-0 bg-slate-900 border-slate-700 disabled:opacity-50">
+                <label for="${inputId}" class="flex-1 cursor-pointer flex items-center justify-between text-slate-300">
+                    <span>${u.name} (@${u.id}) ${isCreator ? '<span class="text-[9px] text-amber-500 font-normal ml-1">(개설자)</span>' : ''}</span>
+                    <span class="text-[9px] bg-slate-800 text-slate-500 px-1 rounded">${u.role === 'ADMIN' ? '관리자' : '멤버'}</span>
+                </label>
+            `;
+
+            div.onclick = (e) => {
+                if (e.target.tagName !== 'INPUT' && !isCreator) {
+                    const input = div.querySelector('input');
+                    input.checked = !input.checked;
+                }
+            };
+
+            container.appendChild(div);
+        });
+    }
+
+    handleEditChannelSubmit() {
+        if (!this.editingChannelId || !this.currentUser) return;
+
+        const ch = this.channels.find(c => c.id === this.editingChannelId);
+        if (!ch) return;
+
+        const name = document.getElementById('channel-edit-name').value.trim();
+        if (!name) {
+            alert("채팅방 이름을 입력해 주세요.");
+            return;
+        }
+
+        const desc = document.getElementById('channel-edit-desc').value.trim();
+        
+        let members = ch.members || [];
+        if (ch.type === 'private') {
+            members = [];
+            if (ch.createdBy) {
+                members.push(ch.createdBy);
+            }
+            const checkedMembers = document.querySelectorAll('input[name="edit-channel-members"]:checked');
+            checkedMembers.forEach(input => {
+                if (!members.includes(input.value)) {
+                    members.push(input.value);
+                }
+            });
+        }
+
+        const updatedChannel = {
+            ...ch,
+            name: name,
+            desc: desc
+        };
+        if (ch.type === 'private') {
+            updatedChannel.members = members;
+        }
+
+        if (this.isFirebaseConnected && this.fbRef) {
+            this.fbRef.child('channels').child(this.editingChannelId).set(updatedChannel)
+                .then(() => {
+                    this.closeEditChannelModal();
+                })
+                .catch(err => alert("채널 수정에 실패했습니다: " + err.message));
+        } else {
+            const idx = this.channels.findIndex(c => c.id === this.editingChannelId);
+            if (idx !== -1) {
+                this.channels[idx] = updatedChannel;
+                localStorage.setItem('rocket_channels', JSON.stringify(this.channels));
+            }
+            this.closeEditChannelModal();
+            this.renderChannelsList();
+            this.renderDMsList();
+            this.updateActiveChannelInfo();
+            this.switchTab('chat');
+        }
+    }
+
+    handleDeleteChannel(channelId) {
+        if (!this.currentUser) return;
+        
+        const ch = this.channels.find(c => c.id === channelId);
+        if (!ch) return;
+        
+        const warningMessage = "⚠️ 경고: 이 채팅방을 삭제하면 대화에 포함된 모든 메시지가 영구 삭제되며 복구할 수 없습니다.";
+        if (confirm(warningMessage)) {
+            if (this.isFirebaseConnected && this.fbRef) {
+                this.fbRef.child('messages').once('value').then(snapshot => {
+                    const msgs = snapshot.val();
+                    if (msgs) {
+                        const deletePromises = [];
+                        Object.keys(msgs).forEach(key => {
+                            if (msgs[key] && msgs[key].channelId === channelId) {
+                                deletePromises.push(this.fbRef.child('messages').child(key).remove());
+                            }
+                        });
+                        return Promise.all(deletePromises);
+                    }
+                }).then(() => {
+                    return this.fbRef.child('channels').child(channelId).remove();
+                }).then(() => {
+                    this.currentChannelId = 'general';
+                    this.markChannelMessagesAsRead(this.currentChannelId);
+                    this.switchTab('chat');
+                }).catch(err => alert("채널 삭제 중 오류가 발생했습니다: " + err.message));
+            } else {
+                let messages = JSON.parse(localStorage.getItem('rocket_messages') || '[]');
+                messages = messages.filter(m => m.channelId !== channelId);
+                localStorage.setItem('rocket_messages', JSON.stringify(messages));
+                
+                this.channels = this.channels.filter(c => c.id !== channelId);
+                localStorage.setItem('rocket_channels', JSON.stringify(this.channels));
+                
+                this.currentChannelId = 'general';
+                this.markChannelMessagesAsRead(this.currentChannelId);
+                this.renderChannelsList();
+                this.renderDMsList();
+                this.updateActiveChannelInfo();
+                this.switchTab('chat');
+            }
+        }
+    }
+
+    // Admin Select DM Methods
+    contactAdminDirect() {
+        if (!this.currentUser) return;
+        
+        // Open the admin selection modal
+        const modal = document.getElementById('admin-select-modal');
+        if (!modal) return;
+        
+        const listContainer = document.getElementById('admin-checkbox-list');
+        if (!listContainer) return;
+        listContainer.innerHTML = '';
+        
+        const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
+        
+        // Filter admins (excl current user)
+        let admins = users.filter(u => u && u.role === 'ADMIN' && u.id !== this.currentUser.id);
+        
+        // Fallback check if admin list is empty in local users list
+        if (admins.length === 0) {
+            const fallbackAdmins = users.filter(u => u && this.adminNames.includes(u.name) && u.id !== this.currentUser.id);
+            admins.push(...fallbackAdmins);
+        }
+        
+        if (admins.length === 0) {
+            alert("현재 문의 가능한 다른 관리자가 존재하지 않습니다.");
+            return;
+        }
+        
+        admins.forEach(admin => {
+            const div = document.createElement('div');
+            div.className = 'flex items-center gap-2.5 py-1';
+            div.innerHTML = `
+                <input type="checkbox" id="chk-admin-${admin.id}" value="${admin.id}" class="w-4 h-4 rounded border-slate-800 bg-slate-950 text-blue-600 focus:ring-blue-500">
+                <label for="chk-admin-${admin.id}" class="text-xs font-medium text-slate-200 cursor-pointer select-none">
+                    ${admin.name} <span class="text-slate-500 font-mono text-[10px]">(@${admin.id})</span>
+                </label>
+            `;
+            listContainer.appendChild(div);
+        });
+        
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    closeAdminSelectModal() {
+        const modal = document.getElementById('admin-select-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+    }
+
+    handleAdminSelectSubmit() {
+        if (!this.currentUser) return;
+        
+        const listContainer = document.getElementById('admin-checkbox-list');
+        if (!listContainer) return;
+        
+        const checkedInputs = listContainer.querySelectorAll('input[type="checkbox"]:checked');
+        if (checkedInputs.length === 0) {
+            alert("대화할 관리자를 최소 1명 선택해 주세요.");
+            return;
+        }
+        
+        const selectedAdminIds = Array.from(checkedInputs).map(input => input.value);
+        
+        // Group all members (current user + selected admins)
+        const allMemberIds = [this.currentUser.id, ...selectedAdminIds];
+        allMemberIds.sort();
+        
+        // Create unique DM ID
+        const dmId = 'dm-' + allMemberIds.join('-');
+        
+        this.closeAdminSelectModal();
+        
+        const exists = this.channels.find(c => c.id === dmId);
+        if (exists) {
+            this.currentChannelId = dmId;
+            this.renderChannelsList();
+            this.renderDMsList();
+            this.updateActiveChannelInfo();
+            this.switchTab('chat');
+            return;
+        }
+        
+        // Fetch names of selected admins for DM name
+        const users = JSON.parse(localStorage.getItem('rocket_users') || '[]');
+        const selectedAdminNames = selectedAdminIds.map(id => {
+            const u = users.find(x => x && x.id === id);
+            return u ? u.name : id;
+        });
+        
+        const dmName = [this.currentUser.name, ...selectedAdminNames].join(', ');
+        
+        const newDM = {
+            id: dmId,
+            type: 'dm',
+            name: dmName,
+            desc: selectedAdminIds.length === 1 ? '관리자 1:1 문의 다이렉트 메시지' : '관리자 다자간 그룹 문의방',
+            createdBy: this.currentUser.id,
+            members: allMemberIds
+        };
+        
+        if (this.isFirebaseConnected && this.fbRef) {
+            this.fbRef.child('channels').child(dmId).set(newDM)
+                .then(() => {
+                    this.currentChannelId = dmId;
+                    this.switchTab('chat');
+                })
+                .catch(err => alert("관리자 문의 대화방 생성에 실패했습니다: " + err.message));
+        } else {
+            this.channels.push(newDM);
+            localStorage.setItem('rocket_channels', JSON.stringify(this.channels));
+            this.currentChannelId = dmId;
+            this.renderChannelsList();
+            this.renderDMsList();
+            this.updateActiveChannelInfo();
+            this.switchTab('chat');
+        }
+    }
+
+    // Toast and Device simulator methods
+    showToast(message, type = 'success') {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        
+        const iconClass = type === 'success' ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-exclamation';
+        toast.innerHTML = `<i class="${iconClass}"></i><span>${message}</span>`;
+        
+        container.appendChild(toast);
+        
+        // Trigger reflow for slide animation
+        toast.offsetHeight;
+        toast.classList.add('show');
+        
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => {
+                toast.remove();
+            }, 300);
+        }, 3000);
+    }
+
+    changeDeviceSimulator(mode) {
+        const wrapper = document.getElementById('app-device-wrapper');
+        if (!wrapper) return;
+        
+        // Remove inline width/height custom styles
+        wrapper.style.width = '';
+        wrapper.style.height = '';
+        
+        // Remove all previous simulator classes
+        wrapper.className = '';
+        wrapper.classList.add(`sim-${mode}`);
+        
+        // Update selection dropdown value
+        const select = document.getElementById('device-sim-select');
+        if (select) {
+            select.value = mode;
+        }
+
+        const widthInput = document.getElementById('device-sim-width');
+        const heightInput = document.getElementById('device-sim-height');
+
+        let targetWidth = 0;
+        let targetHeight = 0;
+
+        if (mode === 'pc') {
+            targetWidth = window.innerWidth;
+            targetHeight = window.innerHeight;
+            wrapper.classList.remove('device-mobile');
+            wrapper.classList.add('sidebar-active');
+            this.sidebarActive = true;
+        } else {
+            if (mode === 'samsung') {
+                targetWidth = 360;
+                targetHeight = 800;
+            } else if (mode === 'iphone') {
+                targetWidth = 390;
+                targetHeight = 844;
+            } else if (mode === 'tablet') {
+                targetWidth = 768;
+                targetHeight = 1024;
+            } else if (mode === 'ipad') {
+                targetWidth = 820;
+                targetHeight = 1180;
+            } else if (mode === 'custom') {
+                targetWidth = parseInt(widthInput.value) || 360;
+                targetHeight = parseInt(heightInput.value) || 800;
+                wrapper.style.width = `${targetWidth}px`;
+                wrapper.style.height = `${targetHeight}px`;
+            }
+            this.checkDeviceMobileState(targetWidth);
+        }
+
+        if (widthInput && heightInput && mode !== 'custom') {
+            widthInput.value = targetWidth;
+            heightInput.value = targetHeight;
+        }
+
+        // Trigger chart redraw
+        this.triggerChartResize();
+    }
+
+    reportBugToAdmin(message, source, lineno, colno) {
+        const reporter = this.currentUser ? `${this.currentUser.name} (@${this.currentUser.id})` : '비로그인 사용자';
+        const timestamp = new Date().toLocaleString('ko-KR');
+        const bugContent = `🚨 **[JS 런타임 에러 신고]**\n- **신고자**: ${reporter}\n- **에러 메시지**: ${message}\n- **발생 파일**: ${source}\n- **발생 위치**: Line ${lineno}:${colno}\n- **신고 시간**: ${timestamp}\n- **브라우저 정보**: ${navigator.userAgent}`;
+
+        this.postMessageToBugReportChannel(bugContent);
+    }
+
+    reportCustomBug() {
+        const userDescription = prompt("신고할 버그 내용을 입력해 주세요. (관리자에게 바로 전달됩니다)");
+        if (!userDescription || !userDescription.trim()) return;
+
+        const reporter = this.currentUser ? `${this.currentUser.name} (@${this.currentUser.id})` : '비로그인 사용자';
+        const timestamp = new Date().toLocaleString('ko-KR');
+        const bugContent = `🐛 **[사용자 버그 신고]**\n- **신고자**: ${reporter}\n- **신고 내용**: ${userDescription.trim()}\n- **신고 시간**: ${timestamp}\n- **접속 환경**: ${navigator.userAgent}`;
+
+        this.postMessageToBugReportChannel(bugContent);
+    }
+
+    postMessageToBugReportChannel(content) {
+        const bugMsg = {
+            channelId: 'bug-report',
+            senderName: '버그알림봇',
+            senderId: 'bug_notifier',
+            role: 'ADMIN',
+            content: content,
+            timestamp: new Date().toISOString(),
+            attachment: null,
+            readBy: { 'bug_notifier': true }
+        };
+
+        if (this.currentUser) {
+            bugMsg.readBy[this.currentUser.id] = true;
+        }
+
+        if (this.isFirebaseConnected && this.fbRef) {
+            this.fbRef.child('messages').push(bugMsg)
+                .then(() => {
+                    this.showToast("🐞 버그 신고가 완료되었습니다. ('버그-보고' 채널에 기록됨)", "success");
+                    if (this.currentUser) {
+                        this.currentChannelId = 'bug-report';
+                        this.switchTab('chat');
+                    }
+                })
+                .catch(err => {
+                    console.error("Firebase bug report failed:", err);
+                    this.showToast("버그 신고 전송에 실패하였습니다.", "error");
+                });
+        } else {
+            const messages = JSON.parse(localStorage.getItem('rocket_messages') || '[]');
+            bugMsg.id = Date.now() + '';
+            messages.push(bugMsg);
+            localStorage.setItem('rocket_messages', JSON.stringify(messages));
+            this.renderChatMessages();
+            this.showToast("🐞 버그 신고가 완료되었습니다. ('버그-보고' 채널에 기록됨)", "success");
+            if (this.currentUser) {
+                this.currentChannelId = 'bug-report';
+                this.switchTab('chat');
+            }
+        }
     }
 
     markChannelMessagesAsRead(channelId) {
@@ -1318,6 +2513,29 @@ class RocketLabApp {
 
         const container = document.getElementById('chat-messages-container');
         container.innerHTML = '';
+
+        const activeCh = this.channels.find(c => c.id === this.currentChannelId);
+        if (!activeCh) {
+            container.innerHTML = `
+                <div class="h-full flex flex-col items-center justify-center text-slate-500 py-10">
+                    <i class="fa-regular fa-comment-dots text-4xl mb-2 text-slate-700"></i>
+                    <p class="text-xs">선택된 채널을 찾을 수 없습니다.</p>
+                </div>
+            `;
+            return;
+        }
+
+        const isAdmin = this.currentUser && this.currentUser.role === 'ADMIN';
+        const isChMember = activeCh.type === 'public' || this.isChannelMember(activeCh, this.currentUser.id);
+        if (!isAdmin && !isChMember) {
+            container.innerHTML = `
+                <div class="h-full flex flex-col items-center justify-center text-slate-500 py-10">
+                    <i class="fa-solid fa-lock text-4xl mb-2 text-rose-500/70"></i>
+                    <p class="text-xs font-semibold text-rose-400">비공개 대화방 접근 권한이 없습니다.</p>
+                </div>
+            `;
+            return;
+        }
 
         let allMessages = [];
         if (messagesFromSync && Array.isArray(messagesFromSync)) {
@@ -1877,9 +3095,9 @@ class RocketLabApp {
         const file = e.target.files[0];
         if (!file) return;
 
-        // Size limit check for Firebase RTDB stability (900KB)
-        if (file.size > 900 * 1024) {
-            alert(`❌ 첨부파일 크기가 너무 큽니다. (최대 900KB 제한)\n더 큰 파일은 '파일 보관함' 탭을 이용해 공유해 주세요.`);
+        // Size limit check for Firebase RTDB stability (1MB)
+        if (file.size > 1024 * 1024) {
+            alert(`❌ 첨부파일 크기가 너무 큽니다. (최대 1MB 제한)\n더 큰 파일은 '파일 보관함' 탭을 이용해 공유해 주세요.`);
             e.target.value = '';
             return;
         }
@@ -1947,10 +3165,32 @@ class RocketLabApp {
             if (this.explicitlyUnreadMessages) {
                 this.explicitlyUnreadMessages.clear();
             }
-            this.currentChannelId = 'general';
-            this.markChannelMessagesAsRead(this.currentChannelId);
-            this.renderChannelsList();
-            this.renderChatMessages();
+            const defaultChannels = [
+                { id: 'notice', name: '공지사항', desc: '관리자가 작성하는 공지사항 채널입니다. (일반 유저는 읽기만 가능)', readOnly: true, type: 'public', createdBy: 'system' },
+                { id: 'general', name: '자유대화', desc: '로켓 설계 및 실험에 대한 자유로운 이야기를 나눕니다.', type: 'public', createdBy: 'system' },
+                { id: 'simulation', name: '시뮬레이션-공유', desc: '3D 시뮬레이션 결과와 HTML 실행 데이터를 공유하는 곳입니다.', type: 'public', createdBy: 'system' },
+                { id: 'reports', name: '보고서-협업', desc: '비행 기록 보고서 작성 및 검토를 위한 협업 채널입니다.', type: 'public', createdBy: 'system' },
+                { id: 'bug-report', name: '버그-보고', desc: '시스템 및 프로그램 오동작에 대한 버그 보고 채널입니다. (일반 유저는 보고만 가능)', readOnly: true, type: 'public', createdBy: 'system' }
+            ];
+            
+            if (this.isFirebaseConnected && this.fbRef) {
+                this.fbRef.child('channels').set(null).then(() => {
+                    const promises = defaultChannels.map(ch => this.fbRef.child('channels').child(ch.id).set(ch));
+                    return Promise.all(promises);
+                }).then(() => {
+                    this.currentChannelId = 'general';
+                    this.markChannelMessagesAsRead(this.currentChannelId);
+                }).catch(err => alert("기본 채널 초기화 중 오류가 발생했습니다: " + err.message));
+            } else {
+                this.channels = defaultChannels;
+                localStorage.setItem('rocket_channels', JSON.stringify(this.channels));
+                this.currentChannelId = 'general';
+                this.markChannelMessagesAsRead(this.currentChannelId);
+                this.renderChannelsList();
+                this.renderDMsList();
+                this.updateActiveChannelInfo();
+                this.renderChatMessages();
+            }
         }
     }
 
@@ -2821,7 +4061,7 @@ class RocketLabApp {
                     };
 
                     if (this.isFirebaseConnected && this.fbRef) {
-                        if (file.size > 900 * 1024) {
+                        if (file.size > 1024 * 1024) {
                             alert(`파일 '${file.name}'의 크기가 너무 큽니다 (최대 1MB 동기화 제한).`);
                             resolve();
                             return;
@@ -2923,7 +4163,7 @@ class RocketLabApp {
                     const reader = new FileReader();
                     reader.onload = (evt) => {
                         if (this.isFirebaseConnected && this.fbRef) {
-                            if (file.size > 900 * 1024) {
+                            if (file.size > 1024 * 1024) {
                                 alert(`파일 '${file.name}'의 크기가 너무 큽니다 (최대 1MB 동기화 제한).`);
                                 resolve();
                                 return;
@@ -2992,7 +4232,7 @@ class RocketLabApp {
                         localId: Date.now() + Math.floor(Math.random() * 100)
                     };
                     if (this.isFirebaseConnected && this.fbRef) {
-                        if (file.size > 900 * 1024) {
+                        if (file.size > 1024 * 1024) {
                             alert(`파일 '${file.name}'의 크기가 너무 큽니다 (최대 1MB 동기화 제한).`);
                             resolve();
                             return;
@@ -3345,8 +4585,8 @@ class RocketLabApp {
                 </div>
                 <div class="bg-slate-950 p-2.5 rounded text-[11px] font-mono text-slate-400 whitespace-pre-wrap leading-relaxed">${r.message}</div>
                 <div class="flex gap-2 justify-end">
-                    <button onclick="app.adminResolveRequest(${r.id}, 'check')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] px-2 py-1 rounded transition">완료 처리</button>
-                    <button onclick="app.adminResolveRequest(${r.id}, 'reset')" class="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-semibold px-2 py-1 rounded transition">비번 일괄 초기화(1234)</button>
+                    <button onclick="app.adminResolveRequest('${r.id}', 'check')" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] px-2 py-1 rounded transition">완료 처리</button>
+                    <button onclick="app.adminResolveRequest('${r.id}', 'reset')" class="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-semibold px-2 py-1 rounded transition">비번 일괄 초기화(1234)</button>
                 </div>
             `;
             

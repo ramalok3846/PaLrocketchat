@@ -11,14 +11,45 @@
             errorBanner.style.width = '100%';
             errorBanner.style.backgroundColor = '#ef4444';
             errorBanner.style.color = '#ffffff';
-            errorBanner.style.padding = '12px';
-            errorBanner.style.zIndex = '99999';
+            errorBanner.style.padding = '12px 24px';
+            errorBanner.style.zIndex = '999999';
             errorBanner.style.fontSize = '12px';
             errorBanner.style.fontFamily = 'monospace';
             errorBanner.style.fontWeight = 'bold';
             errorBanner.style.textAlign = 'center';
             errorBanner.style.boxShadow = '0 4px 10px rgba(0,0,0,0.3)';
-            errorBanner.innerHTML = `🚨 [JS Runtime Error] ${message} <br> <span style="font-size:10px; opacity:0.8;">Line: ${lineno}:${colno} in ${source}</span>`;
+            errorBanner.style.display = 'flex';
+            errorBanner.style.justifyContent = 'center';
+            errorBanner.style.alignItems = 'center';
+            errorBanner.style.gap = '16px';
+            
+            const textSpan = document.createElement('span');
+            textSpan.innerHTML = `🚨 [JS Runtime Error] ${message} <br> <span style="font-size:10px; opacity:0.8;">Line: ${lineno}:${colno} in ${source}</span>`;
+            errorBanner.appendChild(textSpan);
+            
+            const reportBtn = document.createElement('button');
+            reportBtn.innerText = '관리자에게 버그 신고하기';
+            reportBtn.style.backgroundColor = '#ffffff';
+            reportBtn.style.color = '#ef4444';
+            reportBtn.style.border = 'none';
+            reportBtn.style.padding = '6px 12px';
+            reportBtn.style.borderRadius = '6px';
+            reportBtn.style.cursor = 'pointer';
+            reportBtn.style.fontWeight = 'bold';
+            reportBtn.style.fontSize = '11px';
+            reportBtn.style.transition = 'background-color 0.2s';
+            reportBtn.onmouseover = function() { reportBtn.style.backgroundColor = '#fee2e2'; };
+            reportBtn.onmouseout = function() { reportBtn.style.backgroundColor = '#ffffff'; };
+            
+            reportBtn.onclick = function() {
+                if (window.app && typeof window.app.reportBugToAdmin === 'function') {
+                    window.app.reportBugToAdmin(message, source, lineno, colno);
+                } else {
+                    alert("버그 신고 기능을 초기화할 수 없습니다. (App instance not ready)");
+                }
+            };
+            
+            errorBanner.appendChild(reportBtn);
             document.body.appendChild(errorBanner);
             return false;
         };
@@ -69,12 +100,180 @@
     </script>
 </head>
 <body class="h-full bg-space-950 text-slate-100 flex flex-col font-sans overflow-hidden">
+    <!-- APP DEVICE WRAPPER -->
+    <div id="app-device-wrapper" class="sim-pc">
+        <!-- AUTHENTICATION VIEW OVERLAY (Login & Signup) -->
+    <div id="auth-overlay" class="fixed inset-0 z-50 bg-space-950 flex items-center justify-center p-4">
+        <!-- Space background animated elements -->
+        <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-space-950 to-space-950 z-0"></div>
+        <div class="absolute w-[500px] h-[500px] rounded-full bg-blue-600/5 blur-[120px] top-1/4 left-1/4 animate-pulse"></div>
 
-    <!-- MAIN APP STRUCTURE -->
+        <div class="w-full max-w-[440px] bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 shadow-2xl shadow-blue-500/5 rounded-2xl p-8 z-10 relative">
+            <div class="text-center mb-6">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 mx-auto mb-3">
+                    <i class="fa-solid fa-rocket text-white text-2xl"></i>
+                </div>
+                <h2 class="text-xl font-bold tracking-wide text-slate-100">RocketLab Link 로그인</h2>
+                <p class="text-xs text-slate-500 mt-1">영재원 고체 연료 다단 로켓 프로젝트 전용 채널</p>
+            </div>
+
+            <!-- LOGIN VIEW -->
+            <div id="auth-view-login" class="space-y-4">
+                <form id="auth-login-form" onsubmit="app.handleLoginSubmit(event)" class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-slate-400">아이디</label>
+                        <div class="relative">
+                            <i class="fa-regular fa-user absolute left-3.5 top-3.5 text-slate-500"></i>
+                            <input type="text" id="login-id" placeholder="ID를 입력하세요" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center">
+                            <label class="text-xs font-semibold text-slate-400">비밀번호</label>
+                            <button type="button" onclick="app.showForgotModal()" class="text-xs text-blue-400 hover:text-blue-300">아이디/비번 찾기</button>
+                        </div>
+                        <div class="relative">
+                            <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-500"></i>
+                            <input type="password" id="login-pw" placeholder="비밀번호를 입력하세요" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-3 text-sm font-semibold transition shadow-lg shadow-blue-500/15 mt-2">로그인</button>
+                </form>
+
+                <div class="text-center pt-2">
+                    <span class="text-xs text-slate-500">아직 계정이 없으신가요?</span>
+                    <button onclick="app.toggleAuthView('signup')" class="text-xs font-semibold text-blue-400 hover:text-blue-300 ml-1.5">회원가입</button>
+                </div>
+            </div>
+
+            <!-- SIGNUP VIEW -->
+            <div id="auth-view-signup" class="space-y-4 hidden">
+                <form id="auth-signup-form" onsubmit="app.handleSignupSubmit(event)" class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-slate-400 flex justify-between">
+                            <span>실명 인증</span>
+                            <span class="text-[10px] text-amber-500 font-normal">프로젝트 참여 대상자 실명 입력</span>
+                        </label>
+                        <div class="relative">
+                            <i class="fa-regular fa-id-card absolute left-3.5 top-3.5 text-slate-500"></i>
+                            <input type="text" id="signup-name" placeholder="참여 팀원 실명 입력 (예: 윤은준)" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-slate-400">사용할 아이디</label>
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <i class="fa-regular fa-user absolute left-3.5 top-3.5 text-slate-500"></i>
+                                <input type="text" id="signup-id" placeholder="아이디" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                            </div>
+                            <button type="button" onclick="app.checkSignupIdDuplicate()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 px-3 rounded-xl transition font-medium">중복 확인</button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-slate-400">비밀번호</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-500"></i>
+                            <input type="password" id="signup-pw" placeholder="비밀번호 설정" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-xs font-semibold text-slate-400">비밀번호 한번더 확인</label>
+                        <div class="relative">
+                            <i class="fa-solid fa-lock-open absolute left-3.5 top-3.5 text-slate-500"></i>
+                            <input type="password" id="signup-pw-confirm" placeholder="동일 비밀번호 재입력" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-3 text-sm font-semibold transition shadow-lg shadow-blue-500/15 mt-2">회원가입 완료</button>
+                </form>
+
+                <div class="text-center pt-2">
+                    <span class="text-xs text-slate-500">이미 계정이 있으신가요?</span>
+                    <button onclick="app.toggleAuthView('login')" class="text-xs font-semibold text-blue-400 hover:text-blue-300 ml-1.5">로그인하기</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL: FORGOT ID/PW INQUIRY -->
+    <div id="forgot-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="w-full max-w-[400px] bg-slate-900 border border-slate-800 rounded-2xl p-6 relative">
+            <h3 class="text-base font-bold text-slate-100 mb-2 flex items-center gap-2">
+                <i class="fa-solid fa-circle-question text-blue-400"></i>
+                <span>계정 찾기 문의</span>
+            </h3>
+            <p class="text-xs text-slate-400 mb-4 leading-relaxed">
+                아이디/비밀번호 찾기는 관리자(<strong class="text-slate-200">허단/최준성</strong>, <span class="text-blue-400">ramlok@naver.com</span>)에게 문의해 주세요. 아래 폼을 작성해 바로 요청을 보낼 수 있습니다.
+            </p>
+
+            <form id="forgot-request-form" onsubmit="app.handleForgotSubmit(event)" class="space-y-3">
+                <div class="space-y-1">
+                    <label class="text-[11px] font-semibold text-slate-400">사용자 이름 (실명)</label>
+                    <input type="text" id="forgot-name" placeholder="참여 팀원 실명 (예: 윤은준)" required class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[11px] font-semibold text-slate-400">회신받을 이메일 주소</label>
+                    <input type="email" id="forgot-reply-email" placeholder="이메일 입력" required class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[11px] font-semibold text-slate-400">요청 내용</label>
+                    <textarea id="forgot-message" rows="3" placeholder="예: 가입한 ID를 잊어버렸습니다." required class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200 resize-none"></textarea>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="app.closeForgotModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition">취소</button>
+                    <!-- Simulated submit -->
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 rounded-xl font-medium transition flex items-center gap-1"><i class="fa-solid fa-paper-plane"></i> 대시보드로 발송</button>
+                    <!-- mailto trigger -->
+                    <button type="button" onclick="app.sendForgotMailto()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 rounded-xl transition flex items-center justify-center" title="직접 아웃룩/메일앱으로 전송"><i class="fa-solid fa-envelope"></i></button>
+                </div>
+            </form>
+        </div>
+    </div>
+        <!-- Resizable handle -->
+        <div id="device-resize-handle" class="absolute bottom-1 right-1 w-6 h-6 cursor-se-resize flex items-end justify-end p-0.5 text-slate-500 hover:text-slate-300 z-[60] select-none">
+            <i class="fa-solid fa-arrows-left-right rotate-45 text-[10px]"></i>
+        </div>
+    </div>
+
+
+    <!-- DEVICE SIMULATOR WIDGET (Always floating at bottom right) -->
+    <div id="device-simulator-widget" class="fixed bottom-4 right-4 z-[9999] bg-slate-900/90 border border-slate-800 backdrop-blur-md px-3 py-2 rounded-xl flex items-center gap-2.5 shadow-2xl select-none">
+        <span class="text-xs font-semibold text-slate-300"><i class="fa-solid fa-mobile-screen mr-1.5 text-blue-400"></i>비율:</span>
+        <select id="device-sim-select" onchange="app.changeDeviceSimulator(this.value)" class="bg-slate-950 border border-slate-800 text-xs px-2 py-1 rounded-lg text-slate-200 outline-none focus:border-blue-500 cursor-pointer">
+            <option value="pc">PC (기본)</option>
+            <option value="samsung">삼성폰 (360x800)</option>
+            <option value="iphone">아이폰 (390x844)</option>
+            <option value="tablet">태블릿 (768x1024)</option>
+            <option value="ipad">아이패드 (820x1180)</option>
+            <option value="custom">사용자 지정</option>
+        </select>
+        
+        <div class="flex items-center gap-1 text-[11px] text-slate-400 border-l border-slate-800 pl-2.5" id="sim-custom-dimensions">
+            <input type="number" id="device-sim-width" placeholder="W" title="너비" class="w-12 bg-slate-950 border border-slate-800 text-[11px] px-1.5 py-0.5 rounded text-center text-slate-200 outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+            <span>×</span>
+            <input type="number" id="device-sim-height" placeholder="H" title="높이" class="w-12 bg-slate-950 border border-slate-800 text-[11px] px-1.5 py-0.5 rounded text-center text-slate-200 outline-none focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none">
+            <span class="text-[10px] text-slate-500">px</span>
+        </div>
+    </div>
+
+    <!-- TOAST ALERTS CONTAINER -->
+    <div id="toast-container"></div>
+
+    <template id="main-app-template">
+        <!-- MAIN APP STRUCTURE -->
     <div id="main-app" class="flex-1 flex flex-col hidden overflow-hidden">
         <!-- Top Navigation Header -->
         <header class="h-16 bg-space-950/80 backdrop-blur-md border-b border-slate-800/60 px-6 flex items-center justify-between z-40">
             <div class="flex items-center gap-3">
+                <!-- Sidebar Toggle Button -->
+                <button type="button" id="sidebar-toggle-btn" onclick="app.toggleSidebar()" class="w-9 h-9 rounded-xl bg-slate-800/40 border border-slate-700/50 hover:bg-slate-800/80 flex items-center justify-center text-slate-400 hover:text-slate-200 transition" title="메뉴 접기/펴기">
+                    <i class="fa-solid fa-bars text-base"></i>
+                </button>
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
                     <i class="fa-solid fa-rocket text-white text-lg animate-pulse"></i>
                 </div>
@@ -122,7 +321,10 @@
             </div>
         </header>
 
-        <div class="flex-1 flex overflow-hidden">
+        <div class="flex-1 flex overflow-hidden relative">
+            <!-- Sidebar backdrop for mobile overlay click-to-close -->
+            <div id="sidebar-backdrop" onclick="app.toggleSidebar()" class="fixed inset-0 z-40 bg-black/40 hidden"></div>
+            
             <!-- Sidebar -->
             <aside class="w-64 bg-space-950/60 border-r border-slate-800/50 flex flex-col justify-between overflow-y-auto">
                 <div class="p-4 space-y-6">
@@ -154,14 +356,36 @@
                     </div>
 
                     <!-- Chat Channels -->
-                    <div id="chat-channels-list-container">
-                        <div class="text-[10px] font-bold text-slate-500 tracking-wider uppercase px-3 mb-2 font-mono flex justify-between items-center">
-                            <span>Channels</span>
-                            <span class="text-[9px] bg-slate-800 px-1 rounded cursor-pointer" onclick="app.resetChannels()">기본화</span>
+                    <div id="chat-channels-list-container" class="mt-4">
+                        <div class="text-[10px] font-bold text-slate-500 tracking-wider uppercase px-3 mb-2 font-mono flex justify-between items-center select-none">
+                            <span>채널 (CHANNELS)</span>
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-[9px] hover:text-slate-200 cursor-pointer bg-slate-800 px-1 rounded" onclick="app.openCreateChannelModal()" title="채널 만들기"><i class="fa-solid fa-plus text-[9px]"></i></span>
+                                <span class="text-[9px] hover:text-slate-200 cursor-pointer bg-slate-800 px-1 rounded" onclick="app.resetChannels()" title="채널 초기화">기본화</span>
+                            </div>
                         </div>
                         <div class="space-y-1 text-sm text-slate-400" id="channels-list">
                             <!-- Populated in app.js -->
                         </div>
+                    </div>
+
+                    <!-- Direct Messages -->
+                    <div id="chat-dms-list-container" class="mt-6">
+                        <div class="text-[10px] font-bold text-slate-500 tracking-wider uppercase px-3 mb-2 font-mono flex justify-between items-center select-none">
+                            <span>다이렉트 메시지 (DMS)</span>
+                            <span class="text-[9px] hover:text-slate-200 cursor-pointer bg-slate-800 px-1 rounded" onclick="app.openCreateDMModal()" title="DM 시작하기"><i class="fa-solid fa-plus text-[9px]"></i></span>
+                        </div>
+                        <div class="space-y-1 text-sm text-slate-400" id="dms-list">
+                            <!-- Populated in app.js -->
+                        </div>
+                    </div>
+
+                    <!-- Contact Admin Quick Action -->
+                    <div class="mt-6 px-3" id="sidebar-contact-admin-container">
+                        <button onclick="app.contactAdminDirect()" class="w-full bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/20 text-xs py-2.5 rounded-xl flex items-center justify-center gap-2 transition select-none">
+                            <i class="fa-solid fa-headset text-sm"></i>
+                            <span>관리자에게 1:1 문의하기</span>
+                        </button>
                     </div>
                 </div>
 
@@ -184,6 +408,7 @@
                             <span class="text-slate-400 font-bold">#</span>
                             <h2 class="font-bold text-slate-200" id="active-channel-name">자유대화</h2>
                             <span class="text-xs text-slate-500 hidden md:inline ml-2 border-l border-slate-800 pl-3" id="active-channel-desc">로켓 설계에 대한 자유로운 이야기를 나눕니다.</span>
+                            <div class="flex items-center gap-1.5 ml-2" id="channel-header-actions"></div>
                         </div>
                         <div class="flex items-center gap-3 text-xs text-slate-400">
                             <span class="font-mono bg-slate-900 border border-slate-800 px-2 py-0.5 rounded text-amber-400 hidden" id="db-messages-badge"><i class="fa-solid fa-server mr-1.5"></i>DB 메시지: <span id="db-messages-count">0</span>개</span>
@@ -225,7 +450,8 @@
                     </div>
 
                     <!-- Chat input bar -->
-                    <div class="p-4 bg-space-950/50 border-t border-slate-800/40">
+                    <!-- Chat input bar -->
+                    <div class="p-4 bg-space-950/50 border-t border-slate-800/40 flex flex-col gap-2">
                         <form id="chat-send-form" onsubmit="app.handleSendMessage(event)" class="flex items-center gap-3 bg-slate-900/80 border border-slate-800/80 rounded-2xl p-2 focus-within:border-blue-500/50 focus-within:ring-1 focus-within:ring-blue-500/50 transition">
                             <button type="button" onclick="app.triggerChatAttachment()" class="w-10 h-10 rounded-xl hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-200 transition select-none" title="파일 첨부">
                                 <i class="fa-solid fa-paperclip text-lg"></i>
@@ -247,6 +473,10 @@
                                 </button>
                             </div>
                         </form>
+                        <div class="flex justify-between items-center px-2 text-[10px] text-slate-500">
+                            <span>Shift+Enter로 줄바꿈을 할 수 있습니다.</span>
+                            <button type="button" onclick="app.reportCustomBug()" class="text-rose-400 hover:text-rose-300 font-semibold transition flex items-center gap-1"><i class="fa-solid fa-bug text-xs"></i> 관리자에게 버그 신고하기</button>
+                        </div>
                     </div>
                 </section>
 
@@ -547,141 +777,81 @@
         </div>
     </div>
 
-    <!-- AUTHENTICATION VIEW OVERLAY (Login & Signup) -->
-    <div id="auth-overlay" class="fixed inset-0 z-50 bg-space-950 flex items-center justify-center p-4">
-        <!-- Space background animated elements -->
-        <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-space-950 to-space-950 z-0"></div>
-        <div class="absolute w-[500px] h-[500px] rounded-full bg-blue-600/5 blur-[120px] top-1/4 left-1/4 animate-pulse"></div>
-
-        <div class="w-full max-w-[440px] bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 shadow-2xl shadow-blue-500/5 rounded-2xl p-8 z-10 relative">
-            <div class="text-center mb-6">
-                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 mx-auto mb-3">
-                    <i class="fa-solid fa-rocket text-white text-2xl"></i>
-                </div>
-                <h2 class="text-xl font-bold tracking-wide text-slate-100">RocketLab Link 로그인</h2>
-                <p class="text-xs text-slate-500 mt-1">영재원 고체 연료 다단 로켓 프로젝트 전용 채널</p>
-            </div>
-
-            <!-- LOGIN VIEW -->
-            <div id="auth-view-login" class="space-y-4">
-                <form id="auth-login-form" onsubmit="app.handleLoginSubmit(event)" class="space-y-4">
-                    <div class="space-y-1">
-                        <label class="text-xs font-semibold text-slate-400">아이디</label>
-                        <div class="relative">
-                            <i class="fa-regular fa-user absolute left-3.5 top-3.5 text-slate-500"></i>
-                            <input type="text" id="login-id" placeholder="ID를 입력하세요" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
-                        </div>
-                    </div>
-
-                    <div class="space-y-1">
-                        <div class="flex justify-between items-center">
-                            <label class="text-xs font-semibold text-slate-400">비밀번호</label>
-                            <button type="button" onclick="app.showForgotModal()" class="text-xs text-blue-400 hover:text-blue-300">아이디/비번 찾기</button>
-                        </div>
-                        <div class="relative">
-                            <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-500"></i>
-                            <input type="password" id="login-pw" placeholder="비밀번호를 입력하세요" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
-                        </div>
-                    </div>
-
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-3 text-sm font-semibold transition shadow-lg shadow-blue-500/15 mt-2">로그인</button>
-                </form>
-
-                <div class="text-center pt-2">
-                    <span class="text-xs text-slate-500">아직 계정이 없으신가요?</span>
-                    <button onclick="app.toggleAuthView('signup')" class="text-xs font-semibold text-blue-400 hover:text-blue-300 ml-1.5">회원가입</button>
-                </div>
-            </div>
-
-            <!-- SIGNUP VIEW -->
-            <div id="auth-view-signup" class="space-y-4 hidden">
-                <form id="auth-signup-form" onsubmit="app.handleSignupSubmit(event)" class="space-y-4">
-                    <div class="space-y-1">
-                        <label class="text-xs font-semibold text-slate-400 flex justify-between">
-                            <span>실명 인증</span>
-                            <span class="text-[10px] text-amber-500 font-normal">프로젝트 참여 대상자 실명 입력</span>
-                        </label>
-                        <div class="relative">
-                            <i class="fa-regular fa-id-card absolute left-3.5 top-3.5 text-slate-500"></i>
-                            <input type="text" id="signup-name" placeholder="참여 팀원 실명 입력 (예: 윤은준)" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
-                        </div>
-                    </div>
-
-                    <div class="space-y-1">
-                        <label class="text-xs font-semibold text-slate-400">사용할 아이디</label>
-                        <div class="flex gap-2">
-                            <div class="relative flex-1">
-                                <i class="fa-regular fa-user absolute left-3.5 top-3.5 text-slate-500"></i>
-                                <input type="text" id="signup-id" placeholder="아이디" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
-                            </div>
-                            <button type="button" onclick="app.checkSignupIdDuplicate()" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 px-3 rounded-xl transition font-medium">중복 확인</button>
-                        </div>
-                    </div>
-
-                    <div class="space-y-1">
-                        <label class="text-xs font-semibold text-slate-400">비밀번호</label>
-                        <div class="relative">
-                            <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-500"></i>
-                            <input type="password" id="signup-pw" placeholder="비밀번호 설정" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
-                        </div>
-                    </div>
-
-                    <div class="space-y-1">
-                        <label class="text-xs font-semibold text-slate-400">비밀번호 한번더 확인</label>
-                        <div class="relative">
-                            <i class="fa-solid fa-lock-open absolute left-3.5 top-3.5 text-slate-500"></i>
-                            <input type="password" id="signup-pw-confirm" placeholder="동일 비밀번호 재입력" required class="w-full bg-slate-950/60 border border-slate-800 hover:border-slate-700/80 focus:border-blue-500 outline-none text-sm rounded-xl py-3 pl-10 pr-4 text-slate-200 transition">
-                        </div>
-                    </div>
-
-                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-xl py-3 text-sm font-semibold transition shadow-lg shadow-blue-500/15 mt-2">회원가입 완료</button>
-                </form>
-
-                <div class="text-center pt-2">
-                    <span class="text-xs text-slate-500">이미 계정이 있으신가요?</span>
-                    <button onclick="app.toggleAuthView('login')" class="text-xs font-semibold text-blue-400 hover:text-blue-300 ml-1.5">로그인하기</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL: FORGOT ID/PW INQUIRY -->
-    <div id="forgot-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
-        <div class="w-full max-w-[400px] bg-slate-900 border border-slate-800 rounded-2xl p-6 relative">
-            <h3 class="text-base font-bold text-slate-100 mb-2 flex items-center gap-2">
-                <i class="fa-solid fa-circle-question text-blue-400"></i>
-                <span>계정 찾기 문의</span>
+        <!-- MODAL: CREATE CHANNEL -->
+    <div id="channel-create-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="w-full max-w-[380px] bg-slate-900 border border-slate-800 rounded-2xl p-6 relative shadow-2xl">
+            <button onclick="app.closeCreateChannelModal()" class="absolute right-4 top-4 text-slate-400 hover:text-slate-200"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="text-sm font-bold text-slate-100 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-plus text-blue-400"></i>
+                <span id="channel-create-modal-title">새 채팅방 만들기</span>
             </h3>
-            <p class="text-xs text-slate-400 mb-4 leading-relaxed">
-                아이디/비밀번호 찾기는 관리자(<strong class="text-slate-200">허단/최준성</strong>, <span class="text-blue-400">ramlok@naver.com</span>)에게 문의해 주세요. 아래 폼을 작성해 바로 요청을 보낼 수 있습니다.
-            </p>
-
-            <form id="forgot-request-form" onsubmit="app.handleForgotSubmit(event)" class="space-y-3">
+            <div class="space-y-3 text-left">
                 <div class="space-y-1">
-                    <label class="text-[11px] font-semibold text-slate-400">사용자 이름 (실명)</label>
-                    <input type="text" id="forgot-name" placeholder="참여 팀원 실명 (예: 윤은준)" required class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                    <label class="text-[11px] font-semibold text-slate-400">채팅방 종류</label>
+                    <select id="channel-create-type" onchange="app.handleCreateChannelTypeChange()" class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                        <option value="private">비공개 그룹방</option>
+                        <option value="dm">1:1 다이렉트 메시지 (DM)</option>
+                        <option value="public" id="opt-channel-create-public" class="hidden">공개 채널 (관리자 전용)</option>
+                    </select>
                 </div>
-                <div class="space-y-1">
-                    <label class="text-[11px] font-semibold text-slate-400">회신받을 이메일 주소</label>
-                    <input type="email" id="forgot-reply-email" placeholder="이메일 입력" required class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                <div class="space-y-1" id="channel-create-name-field">
+                    <label class="text-[11px] font-semibold text-slate-400">채팅방 이름</label>
+                    <input type="text" id="channel-create-name" placeholder="예: 2조-로켓협업, 잡담방" class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
                 </div>
-                <div class="space-y-1">
-                    <label class="text-[11px] font-semibold text-slate-400">요청 내용</label>
-                    <textarea id="forgot-message" rows="3" placeholder="예: 가입한 ID를 잊어버렸습니다." required class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200 resize-none"></textarea>
+                <div class="space-y-1" id="channel-create-desc-field">
+                    <label class="text-[11px] font-semibold text-slate-400">설명 (선택)</label>
+                    <input type="text" id="channel-create-desc" placeholder="채팅방에 대한 간단한 설명을 입력하세요" class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
                 </div>
-
+                <div class="space-y-1 hidden" id="channel-create-readonly-field">
+                    <label class="flex items-center gap-2 text-[11px] font-semibold text-slate-400 cursor-pointer">
+                        <input type="checkbox" id="channel-create-readonly" class="bg-slate-950 border-slate-800 rounded">
+                        <span>읽기 전용 (관리자만 작성 가능)</span>
+                    </label>
+                </div>
+                <div class="space-y-1 flex flex-col" id="channel-create-members-field">
+                    <label class="text-[11px] font-semibold text-slate-400 mb-1">참여자 초대</label>
+                    <div id="channel-create-members-list" class="max-h-32 overflow-y-auto bg-slate-950 border border-slate-800 rounded-lg p-2 space-y-1.5">
+                        <!-- Populated by app.js -->
+                    </div>
+                </div>
                 <div class="flex gap-2 pt-2">
-                    <button type="button" onclick="app.closeForgotModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition">취소</button>
-                    <!-- Simulated submit -->
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-4 rounded-xl font-medium transition flex items-center gap-1"><i class="fa-solid fa-paper-plane"></i> 대시보드로 발송</button>
-                    <!-- mailto trigger -->
-                    <button type="button" onclick="app.sendForgotMailto()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 rounded-xl transition flex items-center justify-center" title="직접 아웃룩/메일앱으로 전송"><i class="fa-solid fa-envelope"></i></button>
+                    <button onclick="app.closeCreateChannelModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-lg transition font-medium">취소</button>
+                    <button onclick="app.handleCreateChannelSubmit()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2 rounded-lg transition font-bold shadow-lg shadow-blue-500/10">방 만들기</button>
                 </div>
-            </form>
+            </div>
         </div>
     </div>
 
-
+    <!-- MODAL: EDIT CHANNEL -->
+    <div id="channel-edit-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="w-full max-w-[380px] bg-slate-900 border border-slate-800 rounded-2xl p-6 relative shadow-2xl">
+            <button onclick="app.closeEditChannelModal()" class="absolute right-4 top-4 text-slate-400 hover:text-slate-200"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="text-sm font-bold text-slate-100 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-pencil text-amber-400"></i>
+                <span>채팅방 정보 수정</span>
+            </h3>
+            <div class="space-y-3 text-left">
+                <div class="space-y-1">
+                    <label class="text-[11px] font-semibold text-slate-400">채팅방 이름</label>
+                    <input type="text" id="channel-edit-name" class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[11px] font-semibold text-slate-400">설명 (선택)</label>
+                    <input type="text" id="channel-edit-desc" class="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 outline-none text-xs rounded-lg p-2.5 text-slate-200">
+                </div>
+                <div class="space-y-1 flex flex-col" id="channel-edit-members-field">
+                    <label class="text-[11px] font-semibold text-slate-400 mb-1">참여자 목록 관리</label>
+                    <div id="channel-edit-members-list" class="max-h-32 overflow-y-auto bg-slate-950 border border-slate-800 rounded-lg p-2 space-y-1.5">
+                        <!-- Populated by app.js -->
+                    </div>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button onclick="app.closeEditChannelModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2 rounded-lg transition font-medium">취소</button>
+                    <button onclick="app.handleEditChannelSubmit()" class="flex-1 bg-amber-600 hover:bg-amber-500 text-white text-xs py-2 rounded-lg transition font-bold shadow-lg shadow-amber-500/10">수정 완료</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL: FILE PREVIEW -->
     <div id="preview-modal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
@@ -774,7 +944,29 @@
         </div>
     </div>
 
-    <!-- App JavaScript Logic -->
-    <script src="app.js?v=2.0.3"></script>
+        
+    <!-- MODAL: ADMIN SELECTION FOR DM -->
+    <div id="admin-select-modal" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="w-full max-w-[360px] bg-slate-900 border border-slate-800 rounded-2xl p-6 relative shadow-2xl">
+            <button onclick="app.closeAdminSelectModal()" class="absolute right-4 top-4 text-slate-400 hover:text-slate-200"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="text-sm font-bold text-slate-100 mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-user-shield text-blue-400"></i>
+                <span>문의할 관리자 선택</span>
+            </h3>
+            <p class="text-xs text-slate-400 mb-4">대화하고 싶은 관리자를 선택해 주세요. 여러 명을 선택하여 다자간 대화도 가능합니다.</p>
+            <div id="admin-checkbox-list" class="max-h-40 overflow-y-auto bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2 mb-4">
+                <!-- Checkboxes populated dynamically -->
+            </div>
+            <div class="flex gap-2">
+                <button onclick="app.closeAdminSelectModal()" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-2.5 rounded-xl font-medium transition">취소</button>
+                <button onclick="app.handleAdminSelectSubmit()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs py-2.5 rounded-xl font-bold transition">대화 시작</button>
+            </div>
+        </div>
+    </div>
+
+    </template>
+
+<!-- App JavaScript Logic -->
+    <script src="app.js?v=2.0.4"></script>
 </body>
 </html>
